@@ -3,61 +3,58 @@
 This module provides a LangGraph-based weather agent that connects to the
 Xweather MCP server for real-time weather data.
 
-Supports both local (stdio) and remote (SSE) MCP server connections.
+Implements a Professional ReAct Loop:
+- Analyzer: Classifies query complexity (simple_forecast vs deep_reanalysis)
+- Tools: Executes Xweather MCP tools via ToolNode
+- Synthesizer: Merges data into professional meteorological reports
+
 Requires Python 3.10+ and langchain-mcp-adapters package.
 """
 
 import asyncio
-import os
-from typing import Annotated, Any, Literal, TypedDict
+from typing import Any, Literal
 
 from langchain_anthropic import ChatAnthropic
-from langchain_core.messages import BaseMessage, HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.tools import BaseTool
 from langchain_mcp_adapters.client import MultiServerMCPClient
+from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
-from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
-from pydantic import BaseModel, Field
+
+from src.agents.state import AgentState, WeatherConfig
 
 
-class WeatherAgentConfig(BaseModel):
-    """Configuration for the Weather Agent.
+# System prompts for each node
+ANALYZER_SYSTEM_PROMPT = """You are a Senior Meteorological Research Lead at a top-tier climate research institution.
 
-    Args:
-        transport: Transport type - 'stdio' for local, 'streamable_http' for remote.
-        client_id: Xweather client ID.
-        client_secret: Xweather client secret.
-        mcp_endpoint: URL of remote MCP server (for streamable_http transport).
-        model_name: Anthropic model to use.
-    """
+Your task is to analyze the user's weather query and determine the appropriate response type:
 
-    transport: Literal["stdio", "streamable_http"] = Field(
-        default="streamable_http",
-        description="MCP transport type",
-    )
-    client_id: str | None = Field(
-        default=None,
-        description="Xweather client ID",
-    )
-    client_secret: str | None = Field(
-        default=None,
-        description="Xweather client secret",
-    )
-    mcp_endpoint: str = Field(
-        default="https://mcp.api.xweather.com/mcp",
-        description="Xweather Remote MCP server endpoint",
-    )
-    model_name: str = Field(
-        default="claude-sonnet-4-20250514",
-        description="Anthropic model identifier",
-    )
+1. **simple_forecast**: Basic weather queries like current conditions, simple forecasts, or single-location requests.
+   Examples: "What's the weather in Paris?", "Will it rain tomorrow in NYC?"
 
+2. **deep_reanalysis**: Complex queries requiring scientific analysis, multi-factor assessment, or professional-grade insights.
+   Examples: "Analyze weather patterns for outdoor event planning this week", "What are the agricultural impacts of current conditions?"
 
-class AgentState(TypedDict):
-    """State schema for the weather agent graph."""
+After classifying, use the appropriate weather tools to gather data. Always provide evidence-backed insights using precise scientific terminology."""
 
-    messages: Annotated[list[BaseMessage], add_messages]
+SYNTHESIZER_SYSTEM_PROMPT = """You are a Senior Meteorological Research Lead providing a professional analyst report.
+
+Based on the weather data gathered, synthesize a comprehensive response following this structure:
+
+## Summary
+A 1-2 sentence executive summary of the key findings.
+
+## Analysis
+Detailed breakdown of the weather conditions with:
+- Precise measurements and scientific terminology
+- Confidence levels where applicable
+- Relevant meteorological context
+
+## Recommendations
+Actionable insights based on the analysis (if applicable to the query).
+
+Always cite data sources implicitly by referencing the specific measurements. Maintain a professional yet accessible tone."""
 
 
 class MCPConnectionError(Exception):
@@ -69,15 +66,13 @@ class MCPConnectionError(Exception):
 class WeatherAgent:
     """LangGraph-based weather agent using Xweather MCP tools.
 
-    This agent connects to the Xweather MCP server and provides
-    weather-related capabilities through LangGraph orchestration.
-
-    Supports two modes:
-    - Local (stdio): Uses npx @xweather/mcp-server with CLIENT_ID/SECRET
-    - Remote (sse): Uses https endpoint with OAuth token
+    Implements a Professional ReAct Loop with three specialized nodes:
+    - Analyzer: Classifies query and initiates tool calls
+    - Tools: Executes Xweather MCP operations
+    - Synthesizer: Creates professional meteorological reports
 
     Args:
-        config: WeatherAgentConfig with connection settings.
+        config: WeatherConfig with connection settings.
 
     Raises:
         MCPConnectionError: If connection to MCP server fails.
@@ -90,35 +85,25 @@ class WeatherAgent:
         "xweather_get_weather_impacts",
     ]
 
-    def __init__(self, config: WeatherAgentConfig | None = None):
+    def __init__(self, config: WeatherConfig | None = None):
         """Initialize the weather agent.
 
         Args:
-            config: Optional configuration. If not provided, uses environment
-                variables for credentials and defaults to streamable_http transport.
+            config: Optional WeatherConfig. If not provided, loads from
+                environment variables via pydantic-settings.
 
         Raises:
             ValueError: If required environment variables are not set.
         """
         if config is None:
-            client_id = os.getenv("XWEATHER_CLIENT_ID")
-            client_secret = os.getenv("XWEATHER_CLIENT_SECRET")
-            if not client_id or not client_secret:
-                raise ValueError(
-                    "XWEATHER_CLIENT_ID and XWEATHER_CLIENT_SECRET "
-                    "environment variables are required"
-                )
-            config = WeatherAgentConfig(
-                transport="streamable_http",
-                client_id=client_id,
-                client_secret=client_secret,
-            )
+            config = WeatherConfig()
 
         self.config = config
         self._tools: list[BaseTool] = []
         self._graph: StateGraph | None = None
         self._compiled_graph: Any = None
         self._mcp_client: MultiServerMCPClient | None = None
+        self._checkpointer: MemorySaver = MemorySaver()
         self._initialized = False
 
     async def initialize(self) -> None:
@@ -143,14 +128,7 @@ class WeatherAgent:
             MCPConnectionError: If connection to MCP server fails.
         """
         try:
-            if not self.config.client_id or not self.config.client_secret:
-                raise ValueError("client_id and client_secret are required")
-
-            # Create API key by combining client_id and client_secret
-            api_key = f"{self.config.client_id}_{self.config.client_secret}"
-
             if self.config.transport == "stdio":
-                # Local MCP server via npx (if package becomes available)
                 self._mcp_client = MultiServerMCPClient(
                     {
                         "xweather": {
@@ -158,36 +136,31 @@ class WeatherAgent:
                             "command": "npx",
                             "args": ["-y", "@xweather/mcp-server"],
                             "env": {
-                                "XWEATHER_CLIENT_ID": self.config.client_id,
-                                "XWEATHER_CLIENT_SECRET": self.config.client_secret,
+                                "XWEATHER_CLIENT_ID": self.config.xweather_client_id,
+                                "XWEATHER_CLIENT_SECRET": self.config.xweather_client_secret,
                             },
                         }
                     }
                 )
             else:
-                # Remote MCP server via streamable_http
                 self._mcp_client = MultiServerMCPClient(
                     {
                         "xweather": {
                             "transport": "streamable_http",
                             "url": self.config.mcp_endpoint,
                             "headers": {
-                                "Authorization": f"Bearer {api_key}"
+                                "Authorization": f"Bearer {self.config.api_key}"
                             },
                         }
                     }
                 )
 
-            # Get all tools from the MCP server
             all_tools = await self._mcp_client.get_tools()
-
-            # Filter to only the tools we want
             self._tools = [
                 tool for tool in all_tools if tool.name in self.TOOL_NAMES
             ]
 
             if not self._tools:
-                # If no specific tools found, use all available tools
                 self._tools = all_tools
 
             if not self._tools:
@@ -196,8 +169,6 @@ class WeatherAgent:
                     "Check your credentials and connection."
                 )
 
-        except ValueError:
-            raise
         except MCPConnectionError:
             raise
         except Exception as e:
@@ -206,59 +177,154 @@ class WeatherAgent:
             ) from e
 
     def _build_graph(self) -> None:
-        """Build the LangGraph workflow for the weather agent."""
-        llm = ChatAnthropic(
+        """Build the Professional ReAct Loop workflow."""
+        # Primary LLM for analysis with tools
+        analyzer_llm = ChatAnthropic(
             model=self.config.model_name,
             temperature=0,
         )
-        llm_with_tools = llm.bind_tools(self._tools)
+        analyzer_with_tools = analyzer_llm.bind_tools(self._tools)
 
-        def call_model(state: AgentState) -> dict:
-            """Invoke the LLM with the current state.
+        # Synthesizer LLM for professional reports
+        synthesizer_llm = ChatAnthropic(
+            model=self.config.synthesizer_model,
+            temperature=0.3,
+        )
+
+        def analyzer_node(state: AgentState) -> dict:
+            """Analyze query and determine response strategy.
+
+            Classifies the query as simple_forecast or deep_reanalysis,
+            then initiates appropriate tool calls.
 
             Args:
                 state: Current agent state with messages.
 
             Returns:
-                Dictionary with updated messages.
+                Updated state with analysis type and tool calls.
             """
-            response = llm_with_tools.invoke(state["messages"])
+            messages = state["messages"]
+
+            # Inject system prompt for analyzer
+            system_msg = SystemMessage(content=ANALYZER_SYSTEM_PROMPT)
+            messages_with_system = [system_msg] + list(messages)
+
+            response = analyzer_with_tools.invoke(messages_with_system)
+
+            # Determine analysis type from response
+            # Handle content that can be string or list of content blocks
+            content = response.content
+            if isinstance(content, list):
+                content = " ".join(
+                    block.get("text", "") if isinstance(block, dict) else str(block)
+                    for block in content
+                )
+            content_lower = content.lower() if content else ""
+
+            if any(kw in content_lower for kw in ["deep", "complex", "analysis", "impact", "pattern"]):
+                analysis_type = "deep_reanalysis"
+            else:
+                analysis_type = "simple_forecast"
+
+            return {
+                "messages": [response],
+                "analysis_type": analysis_type,
+            }
+
+        def synthesizer_node(state: AgentState) -> dict:
+            """Synthesize weather data into professional report.
+
+            Uses Claude 3.7 to create a comprehensive meteorological
+            analysis report based on gathered data.
+
+            Args:
+                state: Current agent state with tool results.
+
+            Returns:
+                Final synthesized response.
+            """
+            messages = state["messages"]
+            analysis_type = state.get("analysis_type", "simple_forecast")
+
+            # For simple queries, return the last AI response directly
+            if analysis_type == "simple_forecast":
+                # Find the last AI message that isn't a tool call
+                for msg in reversed(messages):
+                    if isinstance(msg, AIMessage) and msg.content and not msg.tool_calls:
+                        return {"messages": []}  # No additional message needed
+
+            # For deep analysis, synthesize a professional report
+            system_msg = SystemMessage(content=SYNTHESIZER_SYSTEM_PROMPT)
+
+            # Build context from conversation
+            synthesis_prompt = HumanMessage(
+                content="Based on the weather data gathered above, provide a professional meteorological analysis report."
+            )
+
+            synthesis_messages = [system_msg] + list(messages) + [synthesis_prompt]
+            response = synthesizer_llm.invoke(synthesis_messages)
+
             return {"messages": [response]}
 
-        def should_continue(state: AgentState) -> str:
-            """Determine if the agent should continue or end.
+        def route_after_analyzer(state: AgentState) -> Literal["tools", "synthesizer"]:
+            """Route based on whether tools need to be called.
 
             Args:
                 state: Current agent state.
 
             Returns:
-                Next node name: 'tools' or 'end'.
+                Next node: 'tools' if tool calls present, else 'synthesizer'.
             """
             last_message = state["messages"][-1]
             if hasattr(last_message, "tool_calls") and last_message.tool_calls:
                 return "tools"
-            return END
+            return "synthesizer"
+
+        def route_after_tools(state: AgentState) -> Literal["analyzer", "synthesizer"]:
+            """Route after tool execution.
+
+            Args:
+                state: Current agent state.
+
+            Returns:
+                Next node: 'analyzer' for more tools, 'synthesizer' when done.
+            """
+            # Check if the previous AI message still has pending logic
+            for msg in reversed(state["messages"]):
+                if isinstance(msg, AIMessage):
+                    if hasattr(msg, "tool_calls") and msg.tool_calls:
+                        # Tool was just executed, go back to analyzer for potential follow-up
+                        return "analyzer"
+                    break
+
+            return "synthesizer"
 
         # Build the graph
         workflow = StateGraph(AgentState)
 
         # Add nodes
-        workflow.add_node("agent", call_model)
+        workflow.add_node("analyzer", analyzer_node)
         workflow.add_node("tools", ToolNode(self._tools))
+        workflow.add_node("synthesizer", synthesizer_node)
 
         # Set entry point
-        workflow.set_entry_point("agent")
+        workflow.set_entry_point("analyzer")
 
-        # Add edges
+        # Add conditional edges
         workflow.add_conditional_edges(
-            "agent",
-            should_continue,
-            {"tools": "tools", END: END},
+            "analyzer",
+            route_after_analyzer,
+            {"tools": "tools", "synthesizer": "synthesizer"},
         )
-        workflow.add_edge("tools", "agent")
+        workflow.add_conditional_edges(
+            "tools",
+            route_after_tools,
+            {"analyzer": "analyzer", "synthesizer": "synthesizer"},
+        )
+        workflow.add_edge("synthesizer", END)
 
         self._graph = workflow
-        self._compiled_graph = workflow.compile()
+        self._compiled_graph = workflow.compile(checkpointer=self._checkpointer)
 
     @property
     def tools(self) -> list[BaseTool]:
@@ -289,11 +355,13 @@ class WeatherAgent:
                 "Agent not initialized. Call 'await agent.initialize()' first."
             )
 
-    def invoke(self, query: str) -> dict:
+    def invoke(self, query: str, thread_id: str | None = None) -> dict:
         """Process a weather-related query synchronously.
 
         Args:
             query: Natural language weather query.
+            thread_id: Optional thread ID for multi-turn conversation persistence.
+                If provided, conversation history is maintained across calls.
 
         Returns:
             Agent response with weather information.
@@ -304,8 +372,17 @@ class WeatherAgent:
         """
         self._check_initialized()
         try:
-            initial_state = {"messages": [HumanMessage(content=query)]}
-            result = self._compiled_graph.invoke(initial_state)
+            input_state: AgentState = {
+                "messages": [HumanMessage(content=query)],
+                "analysis_type": "simple_forecast",
+            }
+
+            # Configure with thread_id for persistence
+            config = {}
+            if thread_id:
+                config = {"configurable": {"thread_id": thread_id}}
+
+            result = self._compiled_graph.invoke(input_state, config)
             return result
         except Exception as e:
             if "connection" in str(e).lower() or "timeout" in str(e).lower():
@@ -314,11 +391,13 @@ class WeatherAgent:
                 ) from e
             raise
 
-    async def ainvoke(self, query: str) -> dict:
+    async def ainvoke(self, query: str, thread_id: str | None = None) -> dict:
         """Process a weather-related query asynchronously.
 
         Args:
             query: Natural language weather query.
+            thread_id: Optional thread ID for multi-turn conversation persistence.
+                If provided, conversation history is maintained across calls.
 
         Returns:
             Agent response with weather information.
@@ -329,8 +408,17 @@ class WeatherAgent:
         """
         self._check_initialized()
         try:
-            initial_state = {"messages": [HumanMessage(content=query)]}
-            result = await self._compiled_graph.ainvoke(initial_state)
+            input_state: AgentState = {
+                "messages": [HumanMessage(content=query)],
+                "analysis_type": "simple_forecast",
+            }
+
+            # Configure with thread_id for persistence
+            config = {}
+            if thread_id:
+                config = {"configurable": {"thread_id": thread_id}}
+
+            result = await self._compiled_graph.ainvoke(input_state, config)
             return result
         except Exception as e:
             if "connection" in str(e).lower() or "timeout" in str(e).lower():
@@ -338,6 +426,22 @@ class WeatherAgent:
                     f"Lost connection to Xweather MCP server: {e}"
                 ) from e
             raise
+
+    def get_conversation_history(self, thread_id: str) -> list:
+        """Retrieve conversation history for a thread.
+
+        Args:
+            thread_id: The thread ID to retrieve history for.
+
+        Returns:
+            List of messages in the conversation.
+        """
+        self._check_initialized()
+        config = {"configurable": {"thread_id": thread_id}}
+        state = self._compiled_graph.get_state(config)
+        if state and state.values:
+            return state.values.get("messages", [])
+        return []
 
     async def close(self) -> None:
         """Close the MCP client connection."""
@@ -348,10 +452,12 @@ class WeatherAgent:
             self._initialized = False
 
 
-async def create_weather_agent() -> WeatherAgent:
+async def create_weather_agent(config: WeatherConfig | None = None) -> WeatherAgent:
     """Factory function to create and initialize a WeatherAgent.
 
-    Uses stdio transport with credentials from environment variables.
+    Args:
+        config: Optional WeatherConfig. If not provided, loads from
+            environment variables.
 
     Returns:
         Configured and initialized WeatherAgent instance.
@@ -360,13 +466,17 @@ async def create_weather_agent() -> WeatherAgent:
         ValueError: If required environment variables are not set.
         MCPConnectionError: If connection to MCP server fails.
     """
-    agent = WeatherAgent()
+    agent = WeatherAgent(config)
     await agent.initialize()
     return agent
 
 
-def create_weather_agent_sync() -> WeatherAgent:
+def create_weather_agent_sync(config: WeatherConfig | None = None) -> WeatherAgent:
     """Synchronous factory function to create and initialize a WeatherAgent.
+
+    Args:
+        config: Optional WeatherConfig. If not provided, loads from
+            environment variables.
 
     Returns:
         Configured and initialized WeatherAgent instance.
@@ -375,4 +485,4 @@ def create_weather_agent_sync() -> WeatherAgent:
         ValueError: If required environment variables are not set.
         MCPConnectionError: If connection to MCP server fails.
     """
-    return asyncio.run(create_weather_agent())
+    return asyncio.run(create_weather_agent(config))
