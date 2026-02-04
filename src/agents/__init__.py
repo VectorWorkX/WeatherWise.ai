@@ -1,6 +1,6 @@
 """LangGraph agent definitions."""
 
-from src.agents.state import AgentState, WeatherConfig
+from src.agents.state import AgentState, QueryClassification, WeatherConfig
 from src.agents.weather_agent import (
     MCPConnectionError,
     WeatherAgent,
@@ -11,6 +11,7 @@ from src.agents.weather_agent import (
 __all__ = [
     "AgentState",
     "MCPConnectionError",
+    "QueryClassification",
     "WeatherAgent",
     "WeatherConfig",
     "create_weather_agent",
