@@ -8,8 +8,40 @@ from typing import Annotated, Literal, TypedDict
 
 from langchain_core.messages import BaseMessage
 from langgraph.graph.message import add_messages
-from pydantic import Field
+from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class QueryClassification(BaseModel):
+    """Structured output for LLM-based query classification.
+
+    The LLM uses this schema to classify user queries along two dimensions:
+    1. Complexity: simple (just format data) vs complex (needs analysis)
+    2. Requires tools: whether MCP tools are needed to answer
+    """
+
+    query_type: Literal["simple", "complex"] = Field(
+        description=(
+            "'simple' for straightforward queries that just need data formatted "
+            "(e.g., 'What is the weather in Tokyo?', 'Temperature in NYC', 'Hello'); "
+            "'complex' for queries requiring interpretation, comparison, reasoning, "
+            "or professional insights (e.g., 'Why is it so cold?', 'Compare NYC to LA', "
+            "'What's the best day for hiking?')."
+        )
+    )
+
+    requires_tools: bool = Field(
+        description=(
+            "True if the query needs weather/MCP tools to answer "
+            "(e.g., 'weather in Tokyo' needs tools). "
+            "False for greetings, general questions, or queries answerable without tools "
+            "(e.g., 'Hello', 'What can you do?', 'Thanks')."
+        )
+    )
+
+    reasoning: str = Field(
+        description="Brief explanation of why this classification was chosen."
+    )
 
 
 class AgentState(TypedDict):
@@ -18,13 +50,13 @@ class AgentState(TypedDict):
     Attributes:
         messages: List of conversation messages with automatic merging
             via the add_messages reducer.
-        analysis_type: Classification of query complexity - either
-            'simple_forecast' for basic queries or 'deep_reanalysis'
-            for scientific analysis requests.
+        query_type: 'simple' for data formatting, 'complex' for analysis.
+        requires_tools: Whether the query needs MCP tool calls.
     """
 
     messages: Annotated[list[BaseMessage], add_messages]
-    analysis_type: str
+    query_type: Literal["simple", "complex"]
+    requires_tools: bool
 
 
 class WeatherConfig(BaseSettings):
