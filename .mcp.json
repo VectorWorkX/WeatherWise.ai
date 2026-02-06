@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "xweather": {
+      "command": "npx",
+      "args": ["-y", "@xweather/mcp-server"],
+      "env": {
+        "XWEATHER_CLIENT_ID": "${XWEATHER_CLIENT_ID}",
+        "XWEATHER_CLIENT_SECRET": "${XWEATHER_CLIENT_SECRET}"
+      }
+    }
+  }
+}
