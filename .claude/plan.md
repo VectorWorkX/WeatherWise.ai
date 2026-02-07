@@ -45,6 +45,12 @@
 - [x] **Hybrid Context:** For Bucket 5 queries, the synthesizer node must combine RAG-retrieved knowledge with live Xweather data (e.g., current pressure maps alongside historical explanations).
 - [x] **End-to-End Test:** "Why is there a heat dome over the Midwest?" — verified: RAG retrieves from CRS Extreme Heat + Frontiers Heatwave + chart/figure analysis; MCP fetches live weather for Chicago & Kansas City; response includes source citations, meteorological terminology, and visual data references. All 5 acceptance criteria pass.
 
+## Phase 4c: Observability (LangSmith)
+
+- [x] **LangSmith Integration:** Added `langsmith` SDK, configured env vars (`LANGCHAIN_TRACING_V2`, `LANGCHAIN_API_KEY`, `LANGCHAIN_PROJECT=weatherwise-ai`).
+- [x] **Tracing Utility:** Created `src/utils/tracing.py` with config validation and `get_run_config()` helper for run metadata, tags, and custom names.
+- [x] **Verification:** Confirmed traces in LangSmith dashboard — all nodes (router, tool_invoker, tools), LLM calls, and tool invocations traced with tags and metadata.
+
 ## Phase 5: The Interface & Polish
 - [ ] Create `prompts.py` using the tone/style examples from `scope.md`.
 - [ ] Build a simple Streamlit or CLI interface for testing.

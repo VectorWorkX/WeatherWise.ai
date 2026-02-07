@@ -13,6 +13,7 @@ from graph.builder import build_graph  # noqa: E402
 from tools.math_tools import calculator  # noqa: E402
 from tools.mcp_bridge import get_mcp_client  # noqa: E402
 from tools.rag_tool import search_knowledge_base  # noqa: E402
+from utils.tracing import get_run_config, validate_tracing_config  # noqa: E402
 
 TEST_QUERIES = [
     ("Bucket 1 — real_time",    "What is the temperature in San Jose right now?"),
@@ -24,6 +25,11 @@ TEST_QUERIES = [
 
 
 async def main() -> None:
+    # Validate LangSmith tracing
+    trace_info = validate_tracing_config()
+    print(f"LangSmith: tracing={trace_info['tracing_enabled']}, "
+          f"project={trace_info['project']}")
+
     client = get_mcp_client()
     mcp_tools = await client.get_tools()
     all_tools = mcp_tools + [calculator, search_knowledge_base]
@@ -35,8 +41,17 @@ async def main() -> None:
         print(f"Query: {query}")
         print(f"{'='*60}")
 
+        # Extract bucket name for tagging
+        bucket = label.split("—")[1].strip() if "—" in label else "unknown"
+        config = get_run_config(
+            run_name=f"smoke_test:{bucket}",
+            tags=["smoke-test", f"bucket:{bucket}"],
+            metadata={"test_suite": "smoke", "bucket": bucket},
+        )
+
         result = await graph.ainvoke(
-            {"messages": [HumanMessage(content=query)], "intent": ""}
+            {"messages": [HumanMessage(content=query)], "intent": ""},
+            config=config,
         )
 
         print(f"Intent: {result['intent']}")
