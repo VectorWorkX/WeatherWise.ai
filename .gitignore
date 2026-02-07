@@ -21,5 +21,10 @@ venv/
 .pytest_cache/
 .ruff_cache/
 
+# RAG data (generated)
+data/chroma_db/
+data/docstore/
+data/extracted_images/
+
 # OS
 .DS_Store
