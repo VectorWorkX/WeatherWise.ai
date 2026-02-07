@@ -12,6 +12,7 @@ from langchain_core.messages import HumanMessage  # noqa: E402
 from graph.builder import build_graph  # noqa: E402
 from tools.math_tools import calculator  # noqa: E402
 from tools.mcp_bridge import get_mcp_client  # noqa: E402
+from tools.rag_tool import search_knowledge_base  # noqa: E402
 
 TEST_QUERIES = [
     ("Bucket 1 — real_time",    "What is the temperature in San Jose right now?"),
@@ -25,7 +26,7 @@ TEST_QUERIES = [
 async def main() -> None:
     client = get_mcp_client()
     mcp_tools = await client.get_tools()
-    all_tools = mcp_tools + [calculator]
+    all_tools = mcp_tools + [calculator, search_knowledge_base]
     graph = build_graph(all_tools)
 
     for label, query in TEST_QUERIES:
