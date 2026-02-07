@@ -15,10 +15,7 @@ from graph.state import AgentState
 
 
 def _route_by_intent(state: AgentState) -> str:
-    """After analyze_intent: skip to END for 'explanation' (RAG not yet wired),
-    otherwise proceed to the tool_invoker."""
-    if state.get("intent") == "explanation":
-        return END
+    """After analyze_intent: route all intents to the tool_invoker."""
     return "tool_invoker"
 
 
@@ -35,9 +32,8 @@ def build_graph(tools: Sequence[BaseTool]):
     """Build and compile the WeatherWise agent graph.
 
     Structure:
-        START → analyze_intent ─┬─ (explanation) → END
-                                └─ (other)       → tool_invoker ─┬─ (tool_calls) → tools → tool_invoker
-                                                                  └─ (no calls)   → END
+        START → analyze_intent → tool_invoker ─┬─ (tool_calls) → tools → tool_invoker
+                                                └─ (no calls)   → END
     """
     graph = StateGraph(AgentState)
 

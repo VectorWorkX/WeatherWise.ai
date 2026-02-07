@@ -36,8 +36,13 @@ INTENT_PROMPTS: dict[str, str] = {
     ),
     "explanation": (
         "You are a weather science expert. The user is asking 'why' about a "
-        "weather phenomenon. Provide a scientific explanation. "
-        "(RAG knowledge base will be added in a future phase.)"
+        "weather phenomenon. ALWAYS use the search_knowledge_base tool first "
+        "to retrieve scientific context from ingested research papers, "
+        "technical reports, and weather charts. Then combine the retrieved "
+        "knowledge with any live weather data to provide a comprehensive, "
+        "scientifically grounded explanation. Cite your sources "
+        "(e.g., '[Source: report_name, p.7]'). Use precise meteorological "
+        "terminology (subsidence, blocking pattern, omega block, etc.)."
     ),
     "math": (
         "You are a weather data analyst. Fetch the required weather data, then "
