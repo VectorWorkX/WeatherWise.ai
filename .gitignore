@@ -26,5 +26,10 @@ data/chroma_db/
 data/docstore/
 data/extracted_images/
 
+# Chainlit
+.chainlit/translations/
+.chainlit/.langchain.db
+.files/
+
 # OS
 .DS_Store

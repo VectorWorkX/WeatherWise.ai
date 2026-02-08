@@ -1,0 +1,59 @@
+/* WeatherWise.ai — Custom Chainlit Styles */
+
+/* ── Header logo sizing ── */
+header img[src*="logo"] {
+    height: 40px !important;
+    max-height: 40px !important;
+}
+
+/* ── Chat message area ── */
+.step-container .message-content {
+    font-size: 0.95rem !important;
+    line-height: 1.7 !important;
+}
+
+/* ── Tool steps: subtle accent border ── */
+.step-tool {
+    border-left: 3px solid #60a5fa !important;
+    border-radius: 6px !important;
+}
+
+/* ── Inline code blocks ── */
+.message-content code {
+    background: rgba(96, 165, 250, 0.1) !important;
+    border: 1px solid rgba(96, 165, 250, 0.2) !important;
+    border-radius: 4px !important;
+    padding: 2px 6px !important;
+    font-size: 0.85em !important;
+}
+
+/* ── Welcome screen markdown ── */
+.markdown-body h1 {
+    background: linear-gradient(135deg, #60a5fa 0%, #a78bfa 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    font-size: 2rem !important;
+    font-weight: 800 !important;
+    letter-spacing: -0.03em !important;
+}
+
+.markdown-body h2 {
+    color: #94a3b8 !important;
+    font-weight: 600 !important;
+}
+
+/* ── Scrollbar (dark mode) ── */
+::-webkit-scrollbar {
+    width: 8px;
+}
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+::-webkit-scrollbar-thumb {
+    background: #334155;
+    border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: #475569;
+}

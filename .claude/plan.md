@@ -53,4 +53,4 @@
 
 ## Phase 5: The Interface & Polish
 - [ ] Create `prompts.py` using the tone/style examples from `scope.md`.
-- [ ] Build a simple Streamlit or CLI interface for testing.
+- [x] **Chainlit UI:** Professional dark-mode chat interface with streaming responses, collapsible tool steps, intent classification display, and LangSmith header link. Launch: `chainlit run app.py`.
