@@ -1,0 +1,58 @@
+import type { Capability } from "../types/weather";
+
+export const CAPABILITIES: Capability[] = [
+  {
+    id: "real_time",
+    title: "Real-Time Forecast",
+    icon: "Sun",
+    description: "Current conditions for any location worldwide",
+    example: "What's the temperature in San Jose?",
+    weatherMode: "sun",
+    gradient: "from-amber-500 to-orange-500",
+  },
+  {
+    id: "comparative",
+    title: "Location Comparison",
+    icon: "ArrowLeftRight",
+    description: "Compare weather between two or more cities",
+    example: "Is it hotter in Phoenix or Miami right now?",
+    weatherMode: "rain",
+    gradient: "from-blue-500 to-cyan-500",
+  },
+  {
+    id: "lifestyle",
+    title: "Lifestyle Advisory",
+    icon: "Heart",
+    description: "Activity-based weather recommendations",
+    example: "Is today good for a wedding in Napa?",
+    weatherMode: "sun",
+    gradient: "from-pink-500 to-rose-500",
+  },
+  {
+    id: "safety",
+    title: "Safety & Alerts",
+    icon: "ShieldAlert",
+    description: "Severe weather warnings and safety guidance",
+    example: "Any active weather warnings in Oklahoma?",
+    weatherMode: "lightning",
+    gradient: "from-red-500 to-orange-500",
+  },
+  {
+    id: "explanation",
+    title: "Atmospheric Science",
+    icon: "FlaskConical",
+    description: "Deep scientific explanations powered by RAG",
+    example: "Why is there a heat dome over the Midwest?",
+    weatherMode: "snow",
+    gradient: "from-violet-500 to-purple-500",
+  },
+  {
+    id: "math",
+    title: "Weather Math",
+    icon: "Calculator",
+    description: "Calculations and unit conversions on live data",
+    example: "Convert the temperature in Boston to Kelvin",
+    weatherMode: "rain",
+    gradient: "from-emerald-500 to-teal-500",
+  },
+];
