@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from datetime import datetime, timezone
 from typing import Sequence
 
 from dotenv import load_dotenv
@@ -13,6 +14,17 @@ from langchain_core.tools import BaseTool
 from graph.state import AgentState
 
 load_dotenv()
+
+
+def _date_context() -> str:
+    """Return a date/time context string for system prompts."""
+    now = datetime.now(timezone.utc)
+    local_now = datetime.now()
+    return (
+        f"Current date and time: {local_now.strftime('%A, %B %d, %Y at %I:%M %p')} local, "
+        f"{now.strftime('%Y-%m-%dT%H:%M:%SZ')} UTC."
+    )
+
 
 INTENT_PROMPTS: dict[str, str] = {
     "real_time": (
@@ -66,7 +78,10 @@ def make_tool_invoker(tools: Sequence[BaseTool]):
     def tool_invoker(state: AgentState) -> dict:
         """Call the LLM with an intent-specific system prompt and bound tools."""
         intent = state.get("intent", "real_time")
-        system_content = INTENT_PROMPTS.get(intent, INTENT_PROMPTS["real_time"])
+        system_content = (
+            f"{_date_context()}\n\n"
+            f"{INTENT_PROMPTS.get(intent, INTENT_PROMPTS['real_time'])}"
+        )
 
         response = llm.invoke(
             [SystemMessage(content=system_content)] + state["messages"]

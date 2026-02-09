@@ -7,6 +7,7 @@ instead of free-form text.
 from __future__ import annotations
 
 import os
+from datetime import datetime, timezone
 from typing import Literal
 
 from dotenv import load_dotenv
@@ -74,8 +75,16 @@ def analyze_intent(state: AgentState) -> dict:
 
     Returns a state update with the ``intent`` field set.
     """
+    now = datetime.now(timezone.utc)
+    local_now = datetime.now()
+    date_ctx = (
+        f"Current date and time: {local_now.strftime('%A, %B %d, %Y at %I:%M %p')} local, "
+        f"{now.strftime('%Y-%m-%dT%H:%M:%SZ')} UTC."
+    )
+    prompt = f"{date_ctx}\n\n{ROUTER_SYSTEM_PROMPT}"
+
     llm = _get_router_llm().with_structured_output(RouteDecision)
     decision: RouteDecision = llm.invoke(
-        [SystemMessage(content=ROUTER_SYSTEM_PROMPT)] + state["messages"]
+        [SystemMessage(content=prompt)] + state["messages"]
     )
     return {"intent": decision.bucket}
