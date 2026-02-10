@@ -2,15 +2,17 @@ import { motion } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { ChatMessage } from "../../types/chat";
+import ApprovalPrompt from "./ApprovalPrompt";
 import IntentBadge from "./IntentBadge";
 import ToolCallStep from "./ToolCallStep";
 import TypingIndicator from "./TypingIndicator";
 
 interface Props {
   message: ChatMessage;
+  onApproval?: (approved: boolean) => void;
 }
 
-export default function MessageBubble({ message }: Props) {
+export default function MessageBubble({ message, onApproval }: Props) {
   const isUser = message.role === "user";
 
   return (
@@ -37,6 +39,17 @@ export default function MessageBubble({ message }: Props) {
             {message.toolCalls.map((tc) => (
               <ToolCallStep key={tc.callId} toolCall={tc} />
             ))}
+          </div>
+        )}
+
+        {/* Safety approval prompt */}
+        {!isUser && message.pendingApproval && onApproval && (
+          <div className="mb-2">
+            <ApprovalPrompt
+              message={message.approvalMessage || "Approve this response?"}
+              onApprove={() => onApproval(true)}
+              onReject={() => onApproval(false)}
+            />
           </div>
         )}
 

@@ -8,7 +8,7 @@ import ChatInput from "../components/chat/ChatInput";
 import WelcomeMessage from "../components/chat/WelcomeMessage";
 
 export default function ChatPage() {
-  const { messages, sendMessage, isConnected, isLoading } = useWeatherChat();
+  const { messages, sendMessage, sendApproval, isConnected, isLoading } = useWeatherChat();
   const [searchParams, setSearchParams] = useSearchParams();
   const autoSentRef = useRef(false);
 
@@ -58,7 +58,7 @@ export default function ChatPage() {
           <WelcomeMessage onQueryClick={handleQueryClick} />
         </div>
       ) : (
-        <MessageList messages={messages} />
+        <MessageList messages={messages} onApproval={sendApproval} />
       )}
 
       {/* Input */}

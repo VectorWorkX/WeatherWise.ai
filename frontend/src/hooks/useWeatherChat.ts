@@ -125,6 +125,23 @@ export function useWeatherChat() {
         });
         break;
 
+      case "approval_required":
+        setMessages((prev) => {
+          const updated = [...prev];
+          for (let i = updated.length - 1; i >= 0; i--) {
+            if (updated[i].role === "assistant" && updated[i].isStreaming) {
+              updated[i] = {
+                ...updated[i],
+                pendingApproval: true,
+                approvalMessage: data.message as string,
+              };
+              break;
+            }
+          }
+          return updated;
+        });
+        break;
+
       case "done":
         setMessages((prev) => {
           const updated = [...prev];
@@ -194,9 +211,47 @@ export function useWeatherChat() {
     [],
   );
 
+  const sendApproval = useCallback(
+    (approved: boolean) => {
+      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+
+      // Clear the pending approval flag on the message
+      setMessages((prev) => {
+        const updated = [...prev];
+        for (let i = updated.length - 1; i >= 0; i--) {
+          if (updated[i].role === "assistant" && updated[i].pendingApproval) {
+            updated[i] = {
+              ...updated[i],
+              pendingApproval: false,
+              approvalMessage: undefined,
+            };
+            if (!approved) {
+              updated[i] = {
+                ...updated[i],
+                content: "Response was not approved.",
+                isStreaming: false,
+              };
+            }
+            break;
+          }
+        }
+        return updated;
+      });
+
+      if (!approved) {
+        setIsLoading(false);
+      }
+
+      wsRef.current.send(
+        JSON.stringify({ type: "user_approval", approved }),
+      );
+    },
+    [],
+  );
+
   const clearMessages = useCallback(() => {
     setMessages([]);
   }, []);
 
-  return { messages, sendMessage, clearMessages, isConnected, isLoading };
+  return { messages, sendMessage, sendApproval, clearMessages, isConnected, isLoading };
 }

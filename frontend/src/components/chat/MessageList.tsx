@@ -4,9 +4,10 @@ import MessageBubble from "./MessageBubble";
 
 interface Props {
   messages: ChatMessage[];
+  onApproval?: (approved: boolean) => void;
 }
 
-export default function MessageList({ messages }: Props) {
+export default function MessageList({ messages, onApproval }: Props) {
   const scrollRef = useAutoScroll<HTMLDivElement>([messages]);
 
   return (
@@ -16,7 +17,7 @@ export default function MessageList({ messages }: Props) {
     >
       <div className="mx-auto flex max-w-3xl flex-col gap-4">
         {messages.map((msg) => (
-          <MessageBubble key={msg.id} message={msg} />
+          <MessageBubble key={msg.id} message={msg} onApproval={onApproval} />
         ))}
       </div>
     </div>

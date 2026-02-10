@@ -14,6 +14,8 @@ export interface ChatMessage {
   intentLabel?: string;
   toolCalls?: ToolCall[];
   isStreaming?: boolean;
+  pendingApproval?: boolean;
+  approvalMessage?: string;
   timestamp: Date;
 }
 
@@ -23,6 +25,7 @@ export type WSMessageType =
   | "tool_call"
   | "tool_result"
   | "token"
+  | "approval_required"
   | "done"
   | "error";
 
