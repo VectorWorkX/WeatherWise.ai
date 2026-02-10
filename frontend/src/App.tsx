@@ -1,7 +1,7 @@
 import { Routes, Route, useLocation } from "react-router-dom";
 import { AnimatePresence } from "framer-motion";
 import Navbar from "./components/layout/Navbar";
-import ParticleBackground from "./components/layout/ParticleBackground";
+import WeatherElements from "./components/layout/WeatherElements";
 import LandingPage from "./pages/LandingPage";
 import ChatPage from "./pages/ChatPage";
 import { useWeatherBackground } from "./hooks/useWeatherBackground";
@@ -9,7 +9,7 @@ import { useWeatherBackground } from "./hooks/useWeatherBackground";
 export default function App() {
   const location = useLocation();
   const isChat = location.pathname === "/chat";
-  const { mode, setHoverMode, clearHoverMode } = useWeatherBackground(!isChat);
+  const { setHoverMode, clearHoverMode } = useWeatherBackground(!isChat);
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-slate-50">
@@ -18,7 +18,7 @@ export default function App() {
 
       {/* Layer 2: Weather particles */}
       <div className="fixed inset-0 z-[1]">
-        <ParticleBackground mode={mode} opacity={isChat ? 0.15 : 0.6} />
+        <WeatherElements opacity={1} />
       </div>
 
       {/* Layer 3: Radial overlay for depth */}

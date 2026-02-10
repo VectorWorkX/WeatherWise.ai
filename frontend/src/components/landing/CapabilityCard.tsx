@@ -46,7 +46,7 @@ export default function CapabilityCard({
         onClick={onClick}
         onMouseEnter={onHover}
         onMouseLeave={onLeave}
-        className="group h-full"
+        className={`group h-full ${capability.bgTint}`}
       >
         {/* Icon + Title */}
         <div className="mb-3 flex items-center gap-3">

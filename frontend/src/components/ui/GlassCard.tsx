@@ -17,7 +17,7 @@ export default function GlassCard({
 }: Props) {
   return (
     <div
-      className={`glass rounded-2xl p-5 transition-all duration-300 hover:border-slate-300/60 hover:shadow-lg hover:shadow-blue-500/10 ${
+      className={`glass rounded-2xl p-5 transition-all duration-300 hover:border-emerald-300/40 hover:shadow-lg hover:shadow-emerald-500/10 ${
         onClick ? "cursor-pointer" : ""
       } ${className}`}
       onClick={onClick}

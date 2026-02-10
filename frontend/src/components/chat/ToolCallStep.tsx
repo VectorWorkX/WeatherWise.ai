@@ -15,7 +15,7 @@ export default function ToolCallStep({ toolCall }: Props) {
     <motion.div
       initial={{ opacity: 0, height: 0 }}
       animate={{ opacity: 1, height: "auto" }}
-      className="mb-2 overflow-hidden rounded-xl border-l-3 border-brand-blue glass-light"
+      className="mb-2 overflow-hidden rounded-xl border-l-3 border-emerald-300 glass-light"
     >
       {/* Header */}
       <button
@@ -23,9 +23,9 @@ export default function ToolCallStep({ toolCall }: Props) {
         className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left transition hover:bg-slate-100/60"
       >
         {isRunning ? (
-          <Loader2 size={14} className="animate-spin text-brand-blue" />
+          <Loader2 size={14} className="animate-spin text-emerald-400" />
         ) : (
-          <CheckCircle2 size={14} className="text-emerald-500" />
+          <CheckCircle2 size={14} className="text-emerald-400" />
         )}
         <Wrench size={14} className="text-slate-400" />
         <span className="flex-1 text-sm font-medium text-slate-600">
@@ -55,7 +55,7 @@ export default function ToolCallStep({ toolCall }: Props) {
                 <div className="rounded-lg bg-slate-100/80 px-3 py-2 font-mono text-xs text-slate-500">
                   {Object.entries(toolCall.args).map(([k, v]) => (
                     <div key={k}>
-                      <span className="text-blue-600">{k}:</span>{" "}
+                      <span className="text-teal-600">{k}:</span>{" "}
                       {String(v).slice(0, 200)}
                     </div>
                   ))}

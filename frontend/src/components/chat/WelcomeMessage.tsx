@@ -16,7 +16,7 @@ export default function WelcomeMessage({ onQueryClick }: Props) {
         <img
           src="/weatherwise-icon.png"
           alt="WeatherWise.ai"
-          className="mx-auto mb-4 h-16 w-auto object-contain mix-blend-multiply"
+          className="mx-auto mb-4 h-16 w-auto object-contain"
         />
         <h2 className="mb-2 text-xl font-bold text-slate-700">
           How can I help you today?
@@ -35,12 +35,12 @@ export default function WelcomeMessage({ onQueryClick }: Props) {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 + i * 0.05 }}
             onClick={() => onQueryClick(cap.example)}
-            className="group rounded-xl border border-slate-200 bg-white/60 px-3 py-3 text-left transition hover:border-slate-300 hover:bg-white/80 hover:shadow-sm"
+            className={`group rounded-xl border-2 border-slate-400/40 ${cap.bgTint} px-3 py-3 text-left transition hover:border-emerald-300/60 hover:bg-white/80 hover:shadow-sm hover:shadow-emerald-500/5`}
           >
-            <p className="mb-1 text-xs font-semibold text-slate-500 transition group-hover:text-slate-700">
+            <p className="mb-1 text-sm font-semibold text-slate-700 transition group-hover:text-slate-800">
               {cap.title}
             </p>
-            <p className="text-sm text-slate-400 transition group-hover:text-slate-500">
+            <p className="text-sm text-slate-600 transition group-hover:text-slate-700">
               &ldquo;{cap.example}&rdquo;
             </p>
           </motion.button>

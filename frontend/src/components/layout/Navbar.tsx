@@ -24,11 +24,12 @@ export default function Navbar() {
               layoutId="logo"
               src="/weatherwise-icon.png"
               alt="WeatherWise.ai"
-              className="h-8 w-auto object-contain mix-blend-multiply"
+              className="h-8 w-auto object-contain"
             />
-            <span className="text-lg font-bold tracking-tight text-slate-800">
-              Weather<span className="text-blue-600">Wise</span>
-              <span className="text-slate-400">.ai</span>
+            <span className="text-lg font-bold tracking-tight text-stroke-sm">
+              <span className="text-orange-350">Weather</span>
+              <span className="text-emerald-500">Wise</span>
+              <span className="text-emerald-500">.ai</span>
             </span>
           </Link>
         </div>
@@ -36,7 +37,7 @@ export default function Navbar() {
         {!isChat && (
           <Link
             to="/chat"
-            className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-blue-500/20 transition hover:shadow-blue-500/30 hover:brightness-110"
+            className="flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-emerald-500/20 transition hover:bg-emerald-600 hover:shadow-emerald-500/30"
           >
             <MessageSquare size={16} />
             Start Chatting

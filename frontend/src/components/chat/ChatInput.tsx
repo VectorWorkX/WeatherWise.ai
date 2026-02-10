@@ -50,12 +50,12 @@ export default function ChatInput({ onSend, disabled, initialValue }: Props) {
           placeholder="Ask about the weather..."
           rows={1}
           disabled={disabled}
-          className="flex-1 resize-none rounded-xl border border-slate-200 bg-white/80 px-4 py-2.5 text-sm text-slate-800 placeholder-slate-400 outline-none transition focus:border-blue-400 focus:ring-1 focus:ring-blue-400/30 disabled:opacity-50"
+          className="flex-1 resize-none rounded-xl border border-slate-200 bg-white/80 px-4 py-2.5 text-sm text-slate-800 placeholder-slate-400 outline-none transition focus:border-emerald-300 focus:ring-1 focus:ring-emerald-300/30 disabled:opacity-50"
         />
         <button
           onClick={handleSend}
           disabled={disabled || !value.trim()}
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg transition hover:brightness-110 disabled:opacity-40 disabled:shadow-none"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-400 text-white shadow-lg transition hover:bg-emerald-500 disabled:opacity-40 disabled:shadow-none"
         >
           <Send size={18} />
         </button>

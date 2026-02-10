@@ -44,8 +44,8 @@ export default function MessageBubble({ message }: Props) {
         <div
           className={`rounded-2xl px-4 py-3 ${
             isUser
-              ? "rounded-br-sm bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/15"
-              : "rounded-bl-sm glass-light text-slate-700"
+              ? "rounded-br-sm bg-red-100/80 backdrop-blur-md border border-red-300/50 text-slate-800 shadow-sm"
+              : "rounded-bl-sm bg-violet-100/80 backdrop-blur-md border border-violet-300/50 text-slate-700 shadow-sm"
           }`}
         >
           {!isUser && message.isStreaming && !message.content ? (

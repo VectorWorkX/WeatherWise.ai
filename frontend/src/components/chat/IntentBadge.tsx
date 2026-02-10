@@ -10,7 +10,7 @@ export default function IntentBadge({ intent, label }: Props) {
 
   return (
     <span
-      className={`inline-block rounded-full bg-gradient-to-r ${gradient} px-3 py-0.5 text-xs font-semibold text-white shadow-sm`}
+      className={`inline-block rounded-full bg-gradient-to-r ${gradient} px-3 py-0.5 text-xs font-semibold text-blue-800 shadow-sm`}
     >
       {label}
     </span>

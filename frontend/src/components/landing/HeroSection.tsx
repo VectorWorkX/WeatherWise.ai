@@ -17,16 +17,17 @@ export default function HeroSection() {
         layoutId="logo-hero"
         src="/weatherwise-icon.png"
         alt="WeatherWise.ai"
-        className="mb-6 h-32 w-auto object-contain mix-blend-multiply"
+        className="mb-6 h-32 w-auto object-contain"
         initial={{ scale: 0.8, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         transition={{ delay: 0.2, duration: 0.6 }}
       />
 
       {/* Title */}
-      <h1 className="mb-4 text-5xl font-extrabold tracking-tight sm:text-6xl md:text-7xl">
-        <span className="gradient-text">WeatherWise</span>
-        <span className="text-slate-400">.ai</span>
+      <h1 className="mb-4 text-5xl font-extrabold tracking-tight text-stroke sm:text-6xl md:text-7xl">
+        <span className="text-orange-350">Weather</span>
+        <span className="text-emerald-500">Wise</span>
+        <span className="text-emerald-500">.ai</span>
       </h1>
 
       {/* Tagline */}
@@ -41,7 +42,7 @@ export default function HeroSection() {
       {/* CTA Button */}
       <motion.button
         onClick={() => navigate("/chat")}
-        className="group flex items-center gap-2.5 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 px-8 py-3.5 text-lg font-semibold text-white shadow-xl shadow-blue-500/25 transition-all hover:shadow-blue-500/40 hover:brightness-110"
+        className="group flex items-center gap-2.5 rounded-2xl bg-emerald-500 px-8 py-3.5 text-lg font-semibold text-white shadow-xl shadow-emerald-500/25 transition-all hover:bg-emerald-600 hover:shadow-emerald-500/40"
         whileHover={{ scale: 1.03 }}
         whileTap={{ scale: 0.98 }}
       >
