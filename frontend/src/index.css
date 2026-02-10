@@ -5,9 +5,12 @@
   --font-sans: "Inter", system-ui, -apple-system, sans-serif;
   --font-mono: "JetBrains Mono", "Fira Code", monospace;
 
-  --color-brand-blue: #60a5fa;
-  --color-brand-purple: #a78bfa;
-  --color-brand-amber: #fbbf24;
+  --color-brand-blue: #3b82f6;
+  --color-brand-teal: #10b981;
+  --color-brand-amber: #eab308;
+  --color-brand-orange: #f97316;
+  --color-brand-red: #ef4444;
+  --color-orange-350: #c2633a;
 }
 
 /* ── Base styles ── */
@@ -50,20 +53,73 @@
   pointer-events: none;
 }
 
-/* ── Gradient text utility ── */
+/* ── Weather element animations ── */
+@keyframes weather-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-14px); }
+}
+
+@keyframes weather-drift {
+  0%, 100% { transform: translateX(0); }
+  50% { transform: translateX(16px); }
+}
+
+@keyframes weather-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.82; transform: scale(1.05); }
+}
+
+@keyframes weather-spin-slow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes weather-twinkle {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+@keyframes weather-sway {
+  0%, 100% { transform: rotate(-4deg); }
+  50% { transform: rotate(4deg); }
+}
+
+@keyframes weather-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-7px); }
+}
+
+.weather-float  { animation: weather-float 8s ease-in-out infinite; }
+.weather-drift  { animation: weather-drift 12s ease-in-out infinite; }
+.weather-pulse  { animation: weather-pulse 6s ease-in-out infinite; }
+.weather-spin-slow { animation: weather-spin-slow 25s linear infinite; }
+.weather-twinkle { animation: weather-twinkle 3s ease-in-out infinite; }
+.weather-sway   { animation: weather-sway 5s ease-in-out infinite; }
+.weather-bob    { animation: weather-bob 2.5s ease-in-out infinite; }
+
+/* ── Gradient text utility (matches icon: blue→green→amber→orange→red) ── */
 .gradient-text {
-  background: linear-gradient(135deg, #2563eb 0%, #7c3aed 50%, #d97706 100%);
+  background: linear-gradient(135deg, #3b82f6 0%, #10b981 30%, #eab308 55%, #f97316 75%, #ef4444 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 
+/* ── Text stroke (black outline) ── */
+.text-stroke {
+  -webkit-text-stroke: 1.5px rgba(0, 0, 0, 0.5);
+  paint-order: stroke fill;
+}
+.text-stroke-sm {
+  -webkit-text-stroke: 0.8px rgba(0, 0, 0, 0.5);
+  paint-order: stroke fill;
+}
+
 /* ── Glass card effect (light theme) ── */
 .glass {
-  background: rgba(255, 255, 255, 0.7);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(148, 163, 184, 0.2);
+  border: 2px solid rgba(15, 23, 42, 0.18);
 }
 
 .glass-light {
@@ -116,8 +172,8 @@
 }
 
 .message-markdown code {
-  background: rgba(96, 165, 250, 0.1);
-  border: 1px solid rgba(96, 165, 250, 0.2);
+  background: rgba(16, 185, 129, 0.08);
+  border: 1px solid rgba(16, 185, 129, 0.2);
   border-radius: 4px;
   padding: 1px 5px;
   font-size: 0.85em;
@@ -169,7 +225,7 @@
 }
 
 .message-markdown blockquote {
-  border-left: 3px solid #3b82f6;
+  border-left: 3px solid #10b981;
   padding-left: 1em;
   color: #64748b;
   margin-bottom: 0.75em;

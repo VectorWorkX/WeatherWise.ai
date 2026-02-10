@@ -8,4 +8,5 @@ export interface Capability {
   example: string;
   weatherMode: WeatherMode;
   gradient: string;
+  bgTint: string;
 }
