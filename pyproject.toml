@@ -23,6 +23,9 @@ dependencies = [
     "langchain-openai>=1.1.0,<2.0.0",
     "langsmith>=0.3.0,<1.0.0",
     "chainlit>=2.0.0,<3.0.0",
+    "fastapi>=0.115.0,<1.0.0",
+    "uvicorn[standard]>=0.32.0,<1.0.0",
+    "websockets>=13.0,<17.0",
 ]
 
 
