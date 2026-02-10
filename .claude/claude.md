@@ -30,6 +30,7 @@ We are building an agentic weather system that acts as an "Expert Analyst," not 
 
 ## Workflow Rules
 7. **Plan Tracking:** After completing any task that corresponds to an item in `.claude/plan.md`, immediately mark it as `[x]` in the plan file. Do not batch updates — check off each item as soon as the work is done and verified.
+8. **Golden Test Cases:** When adding a new golden case in `tests/eval/golden_responses.py`, always populate the `locations` field with the city/location names relevant to the query and response. The `code_assertions.py` location checker derives its known locations list automatically from this field — no separate file to update.
 
 ## Design Philosophy
 "Reliability first. If an API fails, degrade gracefully. If a user asks 'Why', provide the science, not just the statistic."
