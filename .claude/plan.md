@@ -54,3 +54,4 @@
 ## Phase 5: The Interface & Polish
 - [ ] Create `prompts.py` using the tone/style examples from `scope.md`.
 - [x] **Chainlit UI:** Professional dark-mode chat interface with streaming responses, collapsible tool steps, intent classification display, and LangSmith header link. Launch: `chainlit run app.py`.
+- [x] **Premium Web UI:** React + Vite + Tailwind + tsparticles frontend with FastAPI WebSocket backend. Dynamic animated weather background (rain, snow, sun, lightning), glassmorphism landing page with 6 capability cards, aesthetic chat UI with streaming, tool call steps, and intent badges. Launch: `uvicorn server:app --port 8000` + `cd frontend && npm run dev`.
