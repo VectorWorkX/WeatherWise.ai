@@ -1,5 +1,8 @@
 """Intent router — classifies user queries into one of 6 buckets.
 
+DEPRECATED: Superseded by ``graph.nodes.supervisor`` (Phase 8).
+Kept for reference only — not imported by the active graph.
+
 Uses structured output so the LLM returns a validated RouteDecision
 instead of free-form text.
 """
@@ -8,14 +11,10 @@ from __future__ import annotations
 
 import os
 from datetime import datetime, timezone
-from typing import Literal
-
 from dotenv import load_dotenv
 from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import SystemMessage
-from pydantic import BaseModel, Field
-
-from graph.state import AgentState
+from graph.state import AgentState, RouteDecision
 
 load_dotenv()
 
@@ -51,23 +50,21 @@ Analyze the user's latest message and assign it to exactly ONE bucket.
 """
 
 
-class RouteDecision(BaseModel):
-    """Structured output from the router LLM."""
 
-    bucket: Literal[
-        "real_time", "comparative", "lifestyle", "safety", "explanation", "math"
-    ] = Field(description="The intent bucket for this query.")
-    reasoning: str = Field(description="Brief explanation of why this bucket was chosen.")
+_router_llm: ChatAnthropic | None = None
 
 
 def _get_router_llm() -> ChatAnthropic:
-    """Create a lightweight LLM instance for routing."""
-    return ChatAnthropic(
-        model="claude-sonnet-4-20250514",
-        api_key=os.environ["ANTHROPIC_API_KEY"],
-        max_tokens=256,
-        temperature=0,
-    )
+    """Return a cached lightweight LLM instance for routing."""
+    global _router_llm
+    if _router_llm is None:
+        _router_llm = ChatAnthropic(
+            model="claude-sonnet-4-20250514",
+            api_key=os.environ["ANTHROPIC_API_KEY"],
+            max_tokens=256,
+            temperature=0,
+        )
+    return _router_llm
 
 
 def analyze_intent(state: AgentState) -> dict:
@@ -84,7 +81,9 @@ def analyze_intent(state: AgentState) -> dict:
     prompt = f"{date_ctx}\n\n{ROUTER_SYSTEM_PROMPT}"
 
     llm = _get_router_llm().with_structured_output(RouteDecision)
-    decision: RouteDecision = llm.invoke(
-        [SystemMessage(content=prompt)] + state["messages"]
+    system_msg = SystemMessage(
+        content=prompt,
+        additional_kwargs={"cache_control": {"type": "ephemeral"}},
     )
+    decision: RouteDecision = llm.invoke([system_msg] + state["messages"])
     return {"intent": decision.bucket}

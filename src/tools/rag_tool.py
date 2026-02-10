@@ -33,20 +33,26 @@ COLLECTION_NAME = "weatherwise_knowledge"
 # Internal helpers
 # ---------------------------------------------------------------------------
 
-def _get_vectorstore():
-    """Return the ChromaDB vectorstore for similarity search."""
-    from langchain_chroma import Chroma
-    from langchain_openai import OpenAIEmbeddings
+_vectorstore_cache = None
 
-    embeddings = OpenAIEmbeddings(
-        model="text-embedding-3-small",
-        openai_api_key=os.environ["OPENAI_API_KEY"],
-    )
-    return Chroma(
-        collection_name=COLLECTION_NAME,
-        embedding_function=embeddings,
-        persist_directory=str(CHROMA_DIR),
-    )
+
+def _get_vectorstore():
+    """Return a cached ChromaDB vectorstore for similarity search."""
+    global _vectorstore_cache
+    if _vectorstore_cache is None:
+        from langchain_chroma import Chroma
+        from langchain_openai import OpenAIEmbeddings
+
+        embeddings = OpenAIEmbeddings(
+            model="text-embedding-3-small",
+            openai_api_key=os.environ["OPENAI_API_KEY"],
+        )
+        _vectorstore_cache = Chroma(
+            collection_name=COLLECTION_NAME,
+            embedding_function=embeddings,
+            persist_directory=str(CHROMA_DIR),
+        )
+    return _vectorstore_cache
 
 
 def _load_parent(doc_id: str) -> dict[str, Any] | None:
@@ -87,14 +93,20 @@ def search_knowledge_base(query: str) -> str:
             "general scientific knowledge."
         )
 
-    # Retrieve top matches
-    results = vectorstore.similarity_search_with_score(query, k=5)
+    # Retrieve candidate matches, filter by relevance, keep top 5
+    raw_results = vectorstore.similarity_search_with_score(query, k=8)
+
+    # Filter by cosine distance threshold (lower = more relevant)
+    results = [(doc, score) for doc, score in raw_results if score < 1.2]
 
     if not results:
         return (
             "No relevant documents found in the knowledge base for this query. "
             "Please answer using your general scientific knowledge."
         )
+
+    # Keep only the top 5 most relevant after filtering
+    results = results[:5]
 
     # Build response with parent documents
     sections: list[str] = []

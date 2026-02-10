@@ -1,4 +1,11 @@
-"""Worker node — calls the LLM with tools bound, guided by the router's intent."""
+"""Worker node — calls the LLM with tools bound, guided by the router's intent.
+
+DEPRECATED: Superseded by specialist agents in Phase 8:
+  - ``forecast_agent.py`` (Buckets 1-4)
+  - ``research_agent.py`` (Bucket 5)
+  - ``analyst_agent.py``  (Bucket 6)
+Kept for reference only — not imported by the active graph.
+"""
 
 from __future__ import annotations
 
@@ -73,6 +80,7 @@ def make_tool_invoker(tools: Sequence[BaseTool]):
         model="claude-sonnet-4-20250514",
         api_key=os.environ["ANTHROPIC_API_KEY"],
         temperature=0,
+        max_tokens=2048,
     ).bind_tools(tools)
 
     def tool_invoker(state: AgentState) -> dict:
@@ -82,10 +90,12 @@ def make_tool_invoker(tools: Sequence[BaseTool]):
             f"{_date_context()}\n\n"
             f"{INTENT_PROMPTS.get(intent, INTENT_PROMPTS['real_time'])}"
         )
-
-        response = llm.invoke(
-            [SystemMessage(content=system_content)] + state["messages"]
+        system_msg = SystemMessage(
+            content=system_content,
+            additional_kwargs={"cache_control": {"type": "ephemeral"}},
         )
+
+        response = llm.invoke([system_msg] + state["messages"])
         return {"messages": [response]}
 
     return tool_invoker
