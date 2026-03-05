@@ -1,0 +1,232 @@
+@import "tailwindcss";
+
+/* ── Custom theme ── */
+@theme {
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Code", monospace;
+
+  --color-brand-blue: #3b82f6;
+  --color-brand-teal: #10b981;
+  --color-brand-amber: #eab308;
+  --color-brand-orange: #f97316;
+  --color-brand-red: #ef4444;
+  --color-orange-350: #c2633a;
+}
+
+/* ── Base styles ── */
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    font-family: var(--font-sans);
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+  }
+}
+
+/* ── Lightning flash effect ── */
+@keyframes flash {
+  0%, 94%, 100% { opacity: 0; }
+  95% { opacity: 0.15; }
+  96% { opacity: 0; }
+  97% { opacity: 0.1; }
+}
+
+.lightning-flash {
+  animation: flash 4s infinite;
+  background: #a78bfa;
+  pointer-events: none;
+}
+
+/* ── Weather element animations ── */
+@keyframes weather-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-14px); }
+}
+
+@keyframes weather-drift {
+  0%, 100% { transform: translateX(0); }
+  50% { transform: translateX(16px); }
+}
+
+@keyframes weather-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.82; transform: scale(1.05); }
+}
+
+@keyframes weather-spin-slow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes weather-twinkle {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+@keyframes weather-sway {
+  0%, 100% { transform: rotate(-4deg); }
+  50% { transform: rotate(4deg); }
+}
+
+@keyframes weather-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-7px); }
+}
+
+.weather-float  { animation: weather-float 8s ease-in-out infinite; }
+.weather-drift  { animation: weather-drift 12s ease-in-out infinite; }
+.weather-pulse  { animation: weather-pulse 6s ease-in-out infinite; }
+.weather-spin-slow { animation: weather-spin-slow 25s linear infinite; }
+.weather-twinkle { animation: weather-twinkle 3s ease-in-out infinite; }
+.weather-sway   { animation: weather-sway 5s ease-in-out infinite; }
+.weather-bob    { animation: weather-bob 2.5s ease-in-out infinite; }
+
+/* ── Gradient text utility (matches icon: blue→green→amber→orange→red) ── */
+.gradient-text {
+  background: linear-gradient(135deg, #3b82f6 0%, #10b981 30%, #eab308 55%, #f97316 75%, #ef4444 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ── Text stroke (black outline) ── */
+.text-stroke {
+  -webkit-text-stroke: 1.5px rgba(0, 0, 0, 0.5);
+  paint-order: stroke fill;
+}
+.text-stroke-sm {
+  -webkit-text-stroke: 0.8px rgba(0, 0, 0, 0.5);
+  paint-order: stroke fill;
+}
+
+/* ── Glass card effect (light theme) ── */
+.glass {
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 2px solid rgba(15, 23, 42, 0.18);
+}
+
+.glass-light {
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(148, 163, 184, 0.15);
+}
+
+/* ── Typing indicator ── */
+@keyframes pulse-dot {
+  0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+  40% { transform: scale(1); opacity: 1; }
+}
+
+.typing-dot {
+  animation: pulse-dot 1.4s infinite ease-in-out;
+}
+.typing-dot:nth-child(2) {
+  animation-delay: 0.16s;
+}
+.typing-dot:nth-child(3) {
+  animation-delay: 0.32s;
+}
+
+/* ── Markdown in messages ── */
+.message-markdown h1,
+.message-markdown h2,
+.message-markdown h3 {
+  font-weight: 700;
+  margin-top: 1em;
+  margin-bottom: 0.5em;
+}
+.message-markdown h1 { font-size: 1.25rem; }
+.message-markdown h2 { font-size: 1.1rem; }
+.message-markdown h3 { font-size: 1rem; }
+
+.message-markdown p {
+  margin-bottom: 0.75em;
+  line-height: 1.7;
+}
+
+.message-markdown ul, .message-markdown ol {
+  margin-left: 1.25em;
+  margin-bottom: 0.75em;
+}
+
+.message-markdown li {
+  margin-bottom: 0.25em;
+}
+
+.message-markdown code {
+  background: rgba(16, 185, 129, 0.08);
+  border: 1px solid rgba(16, 185, 129, 0.2);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 0.85em;
+  font-family: var(--font-mono);
+}
+
+.message-markdown pre {
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 1em;
+  overflow-x: auto;
+  margin-bottom: 0.75em;
+  color: #334155;
+}
+
+.message-markdown pre code {
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+
+.message-markdown table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 0.75em;
+}
+
+.message-markdown th,
+.message-markdown td {
+  border: 1px solid #e2e8f0;
+  padding: 0.5em 0.75em;
+  text-align: left;
+}
+
+.message-markdown th {
+  background: #f1f5f9;
+  font-weight: 600;
+  color: #334155;
+}
+
+.message-markdown strong {
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.message-markdown em {
+  color: #64748b;
+}
+
+.message-markdown blockquote {
+  border-left: 3px solid #10b981;
+  padding-left: 1em;
+  color: #64748b;
+  margin-bottom: 0.75em;
+}
