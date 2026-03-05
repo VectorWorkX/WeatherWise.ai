@@ -49,6 +49,7 @@ WeatherWise.ai is a stateful multi-agent weather system using a Planner-Executor
 7. **Plan Tracking:** After completing any task in `.claude/plan.md`, mark it `[x]` immediately.
 8. **No Guessing:** Only factual answers based on verified documentation or code. If unsure, say so.
 9. **Suggest Improvements:** If the current approach is suboptimal, flag it and propose alternatives.
+10. **Informed Architectural Judgments:** Before recommending any architectural change, you MUST: (a) fully read and understand the existing implementation — every node, every state field, every design decision, (b) understand WHY the current architecture was chosen — ask the user if the intent isn't clear from the code, (c) identify the specific implementation gaps vs. actual architectural flaws — "broken" does not mean "wrong design", (d) never conflate "a different branch works" with "a different branch has better architecture." A working prototype proves execution quality, not design superiority.
 
 ## Design Philosophy
 "Reliability first. No infinite loops. No race conditions. Degrade gracefully on failure."
