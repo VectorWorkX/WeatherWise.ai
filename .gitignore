@@ -11,6 +11,9 @@ venv/
 # Environment
 .env
 
+# Node
+node_modules/
+
 # IDE
 .DS_Store
 .mypy_cache/
