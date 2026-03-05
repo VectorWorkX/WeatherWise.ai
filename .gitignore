@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# Environment
+.env
+
+# IDE
+.DS_Store
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# Data — binary assets, not tracked in git
+data/raw_pdfs/
+data/satellite_imagery/
+data/chroma_db/
+data/docstore/
+data/extracted_images/
+
+# Keep the data directory structure
+!data/DATASET_SOURCES.md
