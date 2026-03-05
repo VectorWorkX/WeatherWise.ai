@@ -20,11 +20,27 @@ Your job is to synthesize everything into a clear, insightful response.
 
 Guidelines:
 - Lead with the direct answer to the user's question
-- Include specific numbers and data points
+- Use markdown: **bold** for key values and locations, headers for sections
+- Include specific numbers and data points with units
 - If research context is available, weave in the "why" behind the data
 - If calculations were performed, explain what they mean
 - Be concise but thorough — explain the science when relevant
 - If data is missing or a tool returned no results, say so honestly"""
+
+_synthesizer_llm: ChatAnthropic | None = None
+
+
+def _get_synthesizer_llm() -> ChatAnthropic:
+    global _synthesizer_llm
+    if _synthesizer_llm is None:
+        _synthesizer_llm = ChatAnthropic(
+            model="claude-sonnet-4-20250514",
+            api_key=os.environ.get("ANTHROPIC_API_KEY"),
+            max_tokens=1500,
+            temperature=0.3,
+            timeout=60.0,
+        )
+    return _synthesizer_llm
 
 
 async def synthesizer(state: WeatherState) -> dict[str, Any]:
@@ -59,22 +75,19 @@ async def synthesizer(state: WeatherState) -> dict[str, Any]:
             break
 
     try:
-        llm = ChatAnthropic(
-            model="claude-sonnet-4-20250514",
-            api_key=os.environ.get("ANTHROPIC_API_KEY"),
-            max_tokens=1500,
-            temperature=0.3,
-            timeout=60.0,
-        )
+        llm = _get_synthesizer_llm()
 
         @llm_retry()
         async def _synthesize():
-            return await llm.ainvoke([
-                SystemMessage(content=SYSTEM_PROMPT),
-                HumanMessage(
-                    content=f"User query: {user_query}\n\nGathered data:\n{data_block}"
-                ),
-            ])
+            return await llm.ainvoke(
+                [
+                    SystemMessage(content=SYSTEM_PROMPT),
+                    HumanMessage(
+                        content=f"User query: {user_query}\n\nGathered data:\n{data_block}"
+                    ),
+                ],
+                config={"tags": ["synthesizer"]},
+            )
 
         response = await _synthesize()
         content = response.content

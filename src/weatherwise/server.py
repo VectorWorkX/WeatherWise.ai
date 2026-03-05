@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import json
 import os
 import uuid
+from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from langchain_core.messages import HumanMessage
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from langchain_core.messages import AIMessage, HumanMessage
 
 from weatherwise.graph import build_graph
 from weatherwise.logging import setup_logging, get_logger
@@ -20,19 +24,32 @@ setup_tracing()
 setup_logging()
 logger = get_logger(__name__)
 
-app = FastAPI(title="WeatherWise.ai", version="0.1.0")
+app = FastAPI(title="WeatherWise.ai", version="0.2.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 _graph = build_graph(
     checkpointer=os.environ.get("CHECKPOINTER_MODE", "memory"),
 )
 
 
-@app.get("/health")
+# ---------------------------------------------------------------------------
+# REST endpoints
+# ---------------------------------------------------------------------------
+
+
+@app.get("/api/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@app.post("/query")
+@app.post("/api/query")
 async def query(payload: dict[str, Any]) -> dict[str, Any]:
     """Synchronous (non-streaming) query endpoint."""
     user_query = payload.get("query", "")
@@ -51,44 +68,200 @@ async def query(payload: dict[str, Any]) -> dict[str, Any]:
 
     response = ""
     for msg in reversed(result.get("messages", [])):
-        if hasattr(msg, "type") and msg.type == "ai":
-            response = msg.content
+        if isinstance(msg, AIMessage) and msg.content:
+            response = msg.content if isinstance(msg.content, str) else str(msg.content)
             break
 
     return {"response": response, "thread_id": thread_id}
 
 
-@app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket) -> None:
-    """WebSocket endpoint for streaming responses."""
-    await websocket.accept()
-    thread_id = str(uuid.uuid4())
-    config = {"configurable": {"thread_id": thread_id}}
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
-    logger.info("ws_connected", thread_id=thread_id)
+
+def _truncate(text: str, max_len: int = 1500) -> str:
+    if len(text) > max_len:
+        return text[:max_len] + " ... (truncated)"
+    return text
+
+
+def _safe_str(obj: Any) -> str:
+    try:
+        return str(obj)
+    except Exception:
+        return "<unserializable>"
+
+
+def _safe_json(obj: Any) -> Any:
+    """Recursively convert an object to a JSON-safe structure."""
+    if obj is None or isinstance(obj, (bool, int, float, str)):
+        return obj
+    if isinstance(obj, dict):
+        return {str(k): _safe_json(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_safe_json(v) for v in obj]
+    return str(obj)
+
+
+def _extract_text(content: Any) -> str:
+    """Extract text from a chunk content that may be str or list of blocks."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "".join(
+            block if isinstance(block, str) else block.get("text", "")
+            for block in content
+        )
+    return ""
+
+
+# ---------------------------------------------------------------------------
+# WebSocket chat endpoint
+# ---------------------------------------------------------------------------
+
+
+@app.websocket("/ws/chat")
+async def websocket_endpoint(websocket: WebSocket) -> None:
+    """Bidirectional streaming chat over WebSocket.
+
+    Client sends::
+        {"type": "user_message", "content": "What's the temp in SF?"}
+
+    Server sends::
+        {"type": "tool_call",   "name": "...", "args": {...}, "call_id": "..."}
+        {"type": "tool_result", "name": "...", "content": "...", "call_id": "..."}
+        {"type": "token",       "content": "..."}
+        {"type": "done",        "full_content": "..."}
+        {"type": "error",       "message": "..."}
+    """
+    await websocket.accept()
+    session_id = str(uuid.uuid4())
+    config = {"configurable": {"thread_id": session_id}}
+
+    logger.info("ws_connected", thread_id=session_id)
+    await websocket.send_json({"type": "connected", "session_id": session_id})
 
     try:
         while True:
-            user_query = await websocket.receive_text()
-            logger.info("ws_query", query=user_query, thread_id=thread_id)
+            data = await websocket.receive_json()
 
-            await websocket.send_json({"type": "start", "thread_id": thread_id})
+            if data.get("type") != "user_message":
+                continue
 
-            async for event in _graph.astream_events(
-                {"messages": [HumanMessage(content=user_query)]},
-                config=config,
-                version="v2",
-            ):
-                kind = event["event"]
-                if kind == "on_chat_model_stream":
-                    chunk = event["data"]["chunk"]
-                    if hasattr(chunk, "content") and chunk.content:
+            content = data.get("content", "").strip()
+            if not content:
+                continue
+
+            logger.info("ws_query", query=content, thread_id=session_id)
+
+            run_id = uuid.uuid4()
+            run_config = {**config, "run_id": run_id}
+            full_response = ""
+            intent_sent = False
+
+            # Intent label mapping for the frontend
+            intent_labels = {
+                "real_time": "Real-Time Forecast",
+                "comparative": "Location Comparison",
+                "lifestyle": "Lifestyle Advisory",
+                "safety": "Safety & Alerts",
+                "explanation": "Atmospheric Science",
+                "math": "Weather Math",
+                "greeting": "Greeting",
+                "off_topic": "Off-Topic",
+            }
+
+            try:
+                async for event in _graph.astream_events(
+                    {"messages": [HumanMessage(content=content)]},
+                    config=run_config,
+                    version="v2",
+                ):
+                    kind = event.get("event", "")
+
+                    # --- Intent classification (from supervisor) ---
+                    if (
+                        kind == "on_chain_end"
+                        and event.get("name") == "supervisor"
+                        and not intent_sent
+                    ):
+                        output = event.get("data", {}).get("output", {})
+                        intent = output.get("intent", "") if isinstance(output, dict) else ""
+                        if intent:
+                            await websocket.send_json({
+                                "type": "intent",
+                                "intent": intent,
+                                "label": intent_labels.get(intent, intent),
+                            })
+                            intent_sent = True
+
+                    # --- Tool call started ---
+                    elif kind == "on_tool_start":
+                        tool_input = event.get("data", {}).get("input", {})
                         await websocket.send_json({
-                            "type": "token",
-                            "content": chunk.content,
+                            "type": "tool_call",
+                            "name": event.get("name", "unknown"),
+                            "args": _safe_json(tool_input),
+                            "call_id": str(event.get("run_id", "")),
                         })
 
-            await websocket.send_json({"type": "end"})
+                    # --- Tool call finished ---
+                    elif kind == "on_tool_end":
+                        tool_output = event.get("data", {}).get("output", "")
+                        await websocket.send_json({
+                            "type": "tool_result",
+                            "name": event.get("name", "unknown"),
+                            "content": _truncate(_safe_str(tool_output)),
+                            "call_id": str(event.get("run_id", "")),
+                        })
+
+                    # --- LLM token streaming (synthesizer only) ---
+                    elif kind == "on_chat_model_stream":
+                        tags = event.get("tags", [])
+                        is_synthesizer = any("synthesizer" in t for t in tags)
+                        if is_synthesizer:
+                            chunk = event.get("data", {}).get("chunk")
+                            if chunk and hasattr(chunk, "content") and chunk.content:
+                                # Skip tool-call chunks
+                                if hasattr(chunk, "tool_calls") and chunk.tool_calls:
+                                    continue
+                                text = _extract_text(chunk.content)
+                                if text:
+                                    full_response += text
+                                    await websocket.send_json({
+                                        "type": "token",
+                                        "content": text,
+                                    })
+
+                # Fallback: if streaming captured no tokens, extract from state
+                if not full_response:
+                    graph_state = await _graph.aget_state(run_config)
+                    if graph_state.values:
+                        msgs = graph_state.values.get("messages", [])
+                        for msg in reversed(msgs):
+                            if isinstance(msg, AIMessage) and msg.content:
+                                full_response = _extract_text(msg.content)
+                                break
+
+                await websocket.send_json({
+                    "type": "done",
+                    "full_content": full_response,
+                })
+
+            except Exception as e:
+                logger.error("ws_error", error=str(e), thread_id=session_id)
+                await websocket.send_json({"type": "error", "message": str(e)})
 
     except WebSocketDisconnect:
-        logger.info("ws_disconnected", thread_id=thread_id)
+        logger.info("ws_disconnected", thread_id=session_id)
+
+
+# ---------------------------------------------------------------------------
+# Serve frontend build (production) — only when SERVE_FRONTEND=1
+# ---------------------------------------------------------------------------
+
+if os.environ.get("SERVE_FRONTEND") == "1":
+    _frontend_dist = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
+    if _frontend_dist.exists():
+        app.mount("/", StaticFiles(directory=str(_frontend_dist), html=True), name="frontend")

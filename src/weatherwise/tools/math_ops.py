@@ -5,6 +5,8 @@ from __future__ import annotations
 import ast
 import operator
 
+from langchain_core.tools import tool
+
 
 # Historical averages for anomaly calculations (mock baseline)
 HISTORICAL_AVERAGES: dict[str, dict[str, float]] = {
@@ -44,15 +46,16 @@ def _safe_eval(node: ast.AST) -> float:
     raise ValueError(f"Unsupported expression element: {type(node).__name__}")
 
 
+@tool
 def calculate_anomaly(
     location: str, field: str, current_value: float
 ) -> str:
-    """Calculate the anomaly (deviation from historical average).
+    """Calculate how much a current weather value deviates from the historical average.
 
     Args:
-        location: City name (case-insensitive).
-        field: Weather field (temp_c, wind_kph, humidity_pct).
-        current_value: The current observed value.
+        location: City name (case-insensitive), e.g. "Santos", "New York".
+        field: Weather field — one of "temp_c", "wind_kph", "humidity_pct".
+        current_value: The current observed value to compare against the baseline.
 
     Returns:
         Human-readable anomaly result string.
@@ -75,14 +78,16 @@ def calculate_anomaly(
     )
 
 
+@tool
 def compute_expression(expression: str) -> str:
-    """Evaluate a simple arithmetic expression safely using AST parsing.
+    """Evaluate a math expression safely. Input must be a valid numerical expression
+    using only numbers and basic operators (+, -, *, /).
 
-    Only allows numbers and basic operators (+, -, *, /). No function calls,
-    attribute access, or any other Python constructs are permitted.
+    Use this for any arithmetic on weather data such as unit conversions,
+    temperature sums, differences, or averages.
 
     Args:
-        expression: A string like "28.5 - 25.0" or "(22.4 / 12.0) * 100".
+        expression: A string like "28.5 - 25.0" or "(72 - 32) * 5/9 + 273.15".
 
     Returns:
         Result string, or error message.

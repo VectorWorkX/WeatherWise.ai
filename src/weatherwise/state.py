@@ -53,6 +53,9 @@ class WeatherState(TypedDict):
     # "clear" = proceed to planner, "ambiguous" = ask user for clarification.
     routing: Literal["clear", "ambiguous"]
 
+    # Intent classification from the supervisor (e.g., "real_time", "math", "greeting").
+    intent: str
+
 
 # ---------------------------------------------------------------------------
 # Worker payloads — what each Send-spawned worker receives
