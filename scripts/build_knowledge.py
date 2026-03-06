@@ -1,13 +1,14 @@
 """Offline ingestion pipeline for the WeatherWise RAG knowledge base.
 
 Parses atmospheric-science PDFs and satellite images, generates summaries,
-embeds them in ChromaDB, and stores the original parent documents in a
-local file store.  Run this script whenever new documents are added to
-``data/raw_pdfs/`` or ``data/satellite_imagery/``.
+embeds them in Pinecone, and stores the original parent documents in a
+local file store (backup).  Run this script whenever new documents are added
+to ``data/raw_pdfs/`` or ``data/satellite_imagery/``.
 
 Strategy: Multi-Vector Retrieval (Summary-to-Source)
-  - Summaries -> ChromaDB (what we SEARCH against)
-  - Originals -> data/docstore/ (what we RETRIEVE and return)
+  - Summaries -> Pinecone (what we SEARCH against)
+  - Parent content -> Pinecone metadata (what we RETRIEVE and return)
+  - Originals -> data/docstore/ (local backup)
 
 Usage::
 
@@ -38,12 +39,9 @@ DATA_DIR = PROJECT_ROOT / "data"
 RAW_PDFS_DIR = DATA_DIR / "raw_pdfs"
 SATELLITE_DIR = DATA_DIR / "satellite_imagery"
 DOCSTORE_DIR = DATA_DIR / "docstore"
-CHROMA_DIR = DATA_DIR / "chroma_db"
 EXTRACTED_IMAGES_DIR = DATA_DIR / "extracted_images"
 
-COLLECTION_NAME = "weatherwise_knowledge"
-
-for d in [DOCSTORE_DIR, CHROMA_DIR, EXTRACTED_IMAGES_DIR, RAW_PDFS_DIR, SATELLITE_DIR]:
+for d in [DOCSTORE_DIR, EXTRACTED_IMAGES_DIR, RAW_PDFS_DIR, SATELLITE_DIR]:
     d.mkdir(parents=True, exist_ok=True)
 
 
@@ -85,34 +83,26 @@ def _get_embeddings():
     )
 
 
-def _get_chroma_collection():
-    """Return (or create) the ChromaDB collection with OpenAI embeddings."""
-    from langchain_chroma import Chroma
+def _get_pinecone_vectorstore():
+    """Return a Pinecone vectorstore for upserting embeddings."""
+    from langchain_pinecone import PineconeVectorStore
 
-    return Chroma(
-        collection_name=COLLECTION_NAME,
-        embedding_function=_get_embeddings(),
-        persist_directory=str(CHROMA_DIR),
+    return PineconeVectorStore(
+        index_name=os.environ["PINECONE_INDEX_NAME"],
+        embedding=_get_embeddings(),
+        pinecone_api_key=os.environ["PINECONE_API_KEY"],
     )
 
 
 # ---------------------------------------------------------------------------
-# Docstore helpers
+# Docstore helpers (local backup)
 # ---------------------------------------------------------------------------
 
 def _save_to_docstore(doc_id: str, content: str, metadata: dict[str, Any]) -> None:
-    """Persist a parent document to the local file store."""
+    """Persist a parent document to the local file store (backup)."""
     record = {"content": content, "metadata": metadata}
     filepath = DOCSTORE_DIR / f"{doc_id}.json"
     filepath.write_text(json.dumps(record, ensure_ascii=False, indent=2))
-
-
-def _load_from_docstore(doc_id: str) -> dict[str, Any] | None:
-    """Load a parent document from the local file store."""
-    filepath = DOCSTORE_DIR / f"{doc_id}.json"
-    if filepath.exists():
-        return json.loads(filepath.read_text())
-    return None
 
 
 # ---------------------------------------------------------------------------
@@ -249,6 +239,34 @@ def summarize_image(image_path: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Pinecone upsert helper
+# ---------------------------------------------------------------------------
+
+# Pinecone metadata limit is 40KB per vector. Text/table parent content is
+# always under 5KB. For images, we store only the vision summary (not base64).
+MAX_METADATA_CONTENT_CHARS = 36000  # leave room for other metadata fields
+
+
+def _prepare_pinecone_batch(
+    doc_ids: list[str],
+    summaries: list[str],
+    metadatas: list[dict[str, Any]],
+    parent_contents: list[str],
+) -> tuple[list[str], list[str], list[dict[str, Any]]]:
+    """Prepare batch data for Pinecone upsert, embedding parent_content in metadata."""
+    final_metadatas = []
+    for meta, parent_content in zip(metadatas, parent_contents):
+        enriched = {**meta}
+        # Truncate parent content if it would exceed metadata limit
+        if len(parent_content) > MAX_METADATA_CONTENT_CHARS:
+            enriched["parent_content"] = parent_content[:MAX_METADATA_CONTENT_CHARS]
+        else:
+            enriched["parent_content"] = parent_content
+        final_metadatas.append(enriched)
+    return doc_ids, summaries, final_metadatas
+
+
+# ---------------------------------------------------------------------------
 # PDF ingestion
 # ---------------------------------------------------------------------------
 
@@ -293,6 +311,7 @@ def ingest_pdf(pdf_path: str | Path) -> list[str]:
     doc_ids: list[str] = []
     summaries: list[str] = []
     metadatas: list[dict[str, Any]] = []
+    parent_contents: list[str] = []
 
     print("[3/5] Summarizing text chunks...")
     for i, chunk in enumerate(text_chunks):
@@ -309,6 +328,7 @@ def ingest_pdf(pdf_path: str | Path) -> list[str]:
             print(f"  [WARN] Failed to summarize text chunk {i}: {e}")
             summary = original_text[:500]
 
+        # Save to local docstore (backup)
         _save_to_docstore(doc_id, original_text, {
             "source_pdf": pdf_name,
             "element_type": "text",
@@ -323,6 +343,7 @@ def ingest_pdf(pdf_path: str | Path) -> list[str]:
             "element_type": "text",
             "page_number": page_num or 0,
         })
+        parent_contents.append(original_text)
         print(f"  -> Text chunk {i+1}/{len(text_chunks)} summarized ({len(summary)} chars)")
 
     print("[4/5] Summarizing tables...")
@@ -354,6 +375,7 @@ def ingest_pdf(pdf_path: str | Path) -> list[str]:
             "element_type": "table",
             "page_number": page_num or 0,
         })
+        parent_contents.append(table_text)
         print(f"  -> Table {i+1}/{len(table_elements)} summarized")
 
     print("[5/5] Summarizing images via Claude Vision...")
@@ -375,6 +397,7 @@ def ingest_pdf(pdf_path: str | Path) -> list[str]:
         with open(image_path, "rb") as f:
             image_b64 = base64.b64encode(f.read()).decode("utf-8")
 
+        # Save full data (including base64) to local docstore backup
         _save_to_docstore(doc_id, vision_summary, {
             "source_pdf": pdf_name,
             "element_type": "image",
@@ -391,17 +414,22 @@ def ingest_pdf(pdf_path: str | Path) -> list[str]:
             "element_type": "image",
             "page_number": page_num or 0,
         })
+        # For images, parent_content is the vision summary (not base64)
+        parent_contents.append(vision_summary)
         print(f"  -> Image {i+1}/{len(image_elements)} summarized")
 
     if summaries:
-        print(f"\nEmbedding {len(summaries)} summaries into ChromaDB...")
-        vectorstore = _get_chroma_collection()
+        print(f"\nUpserting {len(summaries)} vectors into Pinecone...")
+        _, texts, enriched_metas = _prepare_pinecone_batch(
+            doc_ids, summaries, metadatas, parent_contents
+        )
+        vectorstore = _get_pinecone_vectorstore()
         vectorstore.add_texts(
-            texts=summaries,
-            metadatas=metadatas,
+            texts=texts,
+            metadatas=enriched_metas,
             ids=doc_ids,
         )
-        print(f"  -> Stored {len(summaries)} vectors in '{COLLECTION_NAME}'")
+        print(f"  -> Stored {len(summaries)} vectors in Pinecone")
     else:
         print("\n[WARN] No content extracted from PDF.")
 
@@ -432,6 +460,7 @@ def ingest_image(image_path: str | Path, source_label: str = "") -> str:
     with open(image_path, "rb") as f:
         image_b64 = base64.b64encode(f.read()).decode("utf-8")
 
+    # Save full data to local docstore backup
     _save_to_docstore(doc_id, vision_summary, {
         "source_pdf": source,
         "element_type": "image",
@@ -440,7 +469,7 @@ def ingest_image(image_path: str | Path, source_label: str = "") -> str:
         "image_base64": image_b64,
     })
 
-    vectorstore = _get_chroma_collection()
+    vectorstore = _get_pinecone_vectorstore()
     vectorstore.add_texts(
         texts=[vision_summary],
         metadatas=[{
@@ -448,6 +477,7 @@ def ingest_image(image_path: str | Path, source_label: str = "") -> str:
             "source_pdf": source,
             "element_type": "image",
             "page_number": 0,
+            "parent_content": vision_summary,
         }],
         ids=[doc_id],
     )
@@ -480,8 +510,8 @@ def ingest_all() -> None:
 
     print(f"\n{'='*60}")
     print(f"INGESTION COMPLETE: {total_docs} documents indexed")
-    print(f"  ChromaDB: {CHROMA_DIR}")
-    print(f"  Docstore: {DOCSTORE_DIR}")
+    print(f"  Pinecone index: {os.environ.get('PINECONE_INDEX_NAME', 'N/A')}")
+    print(f"  Docstore backup: {DOCSTORE_DIR}")
     print(f"{'='*60}")
 
 

@@ -9,9 +9,9 @@ WeatherWise.ai is a stateful multi-agent weather system using a Planner-Executor
 - **LLM:** Anthropic Claude (via `langchain-anthropic`)
 - **Classifier:** Claude Haiku (fast, cheap — for ambiguity detection)
 - **Weather Data:** Xweather MCP Server (`https://mcp.api.xweather.com/mcp`) via `langchain-mcp-adapters`
-- **RAG:** ChromaDB (local persistent) + OpenAI `text-embedding-3-small` (1536 dims), summary-to-source multi-vector retrieval
+- **RAG:** Pinecone (serverless, free tier) + OpenAI `text-embedding-3-small` (1536 dims), summary-to-source multi-vector retrieval, parent content in vector metadata
 - **Document Parsing:** `unstructured` (`hi_res` strategy) for PDF text, tables, images — ingestion only
-- **Tools:** Xweather MCP tools (real-time), ChromaDB RAG retrieval, math operations
+- **Tools:** Xweather MCP tools (real-time), Pinecone RAG retrieval, math operations
 - **Checkpointing:** AsyncRedisSaver (production, 24h TTL), MemorySaver (dev), AsyncSqliteSaver (local persistent)
 - **Prompt Caching:** Anthropic native prompt caching via `cache_control` content blocks (GA, no beta header)
 - **Validation:** Pydantic models for structured output
@@ -31,10 +31,10 @@ WeatherWise.ai is a stateful multi-agent weather system using a Planner-Executor
 - `src/weatherwise/graph.py` — StateGraph builder and wiring
 - `src/weatherwise/nodes/` — Node implementations (supervisor, planner, executor, fetcher, retriever, calculator, synthesizer)
 - `src/weatherwise/tools/xweather_mcp.py` — Xweather MCP client config
-- `src/weatherwise/tools/vector_search.py` — ChromaDB retrieval (runtime, lightweight)
+- `src/weatherwise/tools/vector_search.py` — Pinecone retrieval (runtime, lightweight)
 - `src/weatherwise/tools/` — Tool functions (MCP bridge, RAG retrieval, math)
 - `src/weatherwise/main.py` — Entry point with checkpointing
-- `scripts/build_knowledge.py` — Offline RAG ingestion pipeline (PDF/image -> ChromaDB)
+- `scripts/build_knowledge.py` — Offline RAG ingestion pipeline (PDF/image -> Pinecone)
 - `scripts/verify_retrieval.py` — RAG retrieval test harness
 
 ## Coding Standards
@@ -44,7 +44,7 @@ WeatherWise.ai is a stateful multi-agent weather system using a Planner-Executor
 4. **No Hardcoding:** Use `.env` for all keys (ANTHROPIC_API_KEY, etc.).
 5. **Reducers:** Every state field updated by parallel nodes MUST use Annotated reducers.
 6. **Send import:** Always `from langgraph.types import Send` (NOT `langgraph.graph`).
-7. **RAG Separation:** Heavy ingestion logic (PDF parsing, image summarization, embedding) lives in `scripts/`. Only lightweight retrieval (query ChromaDB, fetch from docstore) belongs in `src/weatherwise/tools/`. Never import ingestion code at runtime.
+7. **RAG Separation:** Heavy ingestion logic (PDF parsing, image summarization, embedding) lives in `scripts/`. Only lightweight retrieval (query Pinecone) belongs in `src/weatherwise/tools/`. Never import ingestion code at runtime.
 
 ## Workflow Rules
 7. **Plan Tracking:** After completing any task in `.claude/plan.md`, mark it `[x]` immediately.

@@ -1,9 +1,9 @@
 """Verify the RAG retrieval pipeline against known queries.
 
-Runs test queries against ChromaDB and validates that:
+Runs test queries against Pinecone and validates that:
 1. Relevant documents are retrieved
-2. Metadata (doc_id, source_pdf, element_type) is intact
-3. Parent documents can be fetched from the file store
+2. Metadata (doc_id, source_pdf, element_type, parent_content) is intact
+3. Relevance scores are above threshold
 
 Usage::
 
@@ -14,6 +14,7 @@ Usage::
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -24,10 +25,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from weatherwise.tools.vector_search import (
-    CHROMA_DIR,
-    COLLECTION_NAME,
+    RELEVANCE_THRESHOLD,
     _get_vectorstore,
-    _load_parent,
+    _get_index_stats,
 )
 
 # ---------------------------------------------------------------------------
@@ -51,21 +51,13 @@ TEST_QUERIES = [
 
 
 def verify_collection_stats() -> None:
-    """Print basic statistics about the ChromaDB collection."""
-    vectorstore = _get_vectorstore()
-    collection = vectorstore._collection
+    """Print basic statistics about the Pinecone index."""
+    index_name = os.environ.get("PINECONE_INDEX_NAME", "unknown")
+    total = _get_index_stats()
+    print(f"Pinecone index '{index_name}': {total} vectors")
 
-    count = collection.count()
-    print(f"Collection '{COLLECTION_NAME}': {count} vectors")
-
-    if count == 0:
-        print("[WARN] Collection is empty. Run build_knowledge.py first.")
-        return
-
-    sample = collection.peek(limit=3)
-    print(f"\nSample metadata (first 3 entries):")
-    for i, meta in enumerate(sample.get("metadatas", [])):
-        print(f"  [{i}] {meta}")
+    if total == 0:
+        print("[WARN] Index is empty. Run build_knowledge.py first.")
 
 
 def verify_query(query: str, top_k: int = 3) -> list[dict]:
@@ -88,25 +80,29 @@ def verify_query(query: str, top_k: int = 3) -> list[dict]:
         source = meta.get("source_pdf", "UNKNOWN")
         elem_type = meta.get("element_type", "UNKNOWN")
         page = meta.get("page_number", "?")
+        has_parent = bool(meta.get("parent_content", ""))
 
         print(f"\n  --- Result #{rank} (score: {score:.4f}) ---")
         print(f"  Source: {source} | Type: {elem_type} | Page: {page}")
         print(f"  Summary: {doc.page_content[:200]}...")
 
-        parent = _load_parent(doc_id)
-        if parent:
-            parent_preview = parent["content"][:150]
+        if has_parent:
+            parent_preview = meta["parent_content"][:150]
             print(f"  Parent:  {parent_preview}...")
-            print(f"  [OK] Parent document retrieved from docstore")
+            print(f"  [OK] Parent content in metadata")
         else:
-            print(f"  [FAIL] Parent document NOT found for doc_id={doc_id}")
+            print(f"  [WARN] No parent_content in metadata for doc_id={doc_id}")
+
+        relevance_ok = score >= RELEVANCE_THRESHOLD
+        print(f"  Relevance: {'[OK]' if relevance_ok else '[LOW]'} "
+              f"(score={score:.4f}, threshold={RELEVANCE_THRESHOLD})")
 
         output.append({
             "rank": rank,
             "score": score,
             "summary": doc.page_content,
             "metadata": meta,
-            "parent_found": parent is not None,
+            "has_parent_content": has_parent,
         })
 
     return output
@@ -115,14 +111,14 @@ def verify_query(query: str, top_k: int = 3) -> list[dict]:
 def run_test_suite() -> None:
     """Run all test queries and report results."""
     print("=" * 60)
-    print("WeatherWise RAG Retrieval Verification")
+    print("WeatherWise RAG Retrieval Verification (Pinecone)")
     print("=" * 60)
 
     verify_collection_stats()
 
-    vectorstore = _get_vectorstore()
-    if vectorstore._collection.count() == 0:
-        print("\nCannot run test queries on empty collection. Exiting.")
+    total_vectors = _get_index_stats()
+    if total_vectors == 0:
+        print("\nCannot run test queries on empty index. Exiting.")
         return
 
     passed = 0
@@ -153,7 +149,7 @@ def run_test_suite() -> None:
 def main() -> None:
     """CLI entry point."""
     parser = argparse.ArgumentParser(
-        description="Verify WeatherWise RAG retrieval pipeline"
+        description="Verify WeatherWise RAG retrieval pipeline (Pinecone)"
     )
     parser.add_argument("--query", type=str, help="Run a single custom query")
     parser.add_argument("--top-k", type=int, default=3, help="Number of results")
