@@ -71,7 +71,10 @@ async def planner(state: WeatherState) -> dict[str, Any]:
         @llm_retry()
         async def _plan():
             return await structured_llm.ainvoke(
-                [SystemMessage(content=SYSTEM_PROMPT)] + list(state["messages"])
+                [SystemMessage(content=[
+                    {"type": "text", "text": SYSTEM_PROMPT,
+                     "cache_control": {"type": "ephemeral"}},
+                ])] + list(state["messages"])
             )
 
         result = await _plan()

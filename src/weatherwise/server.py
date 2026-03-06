@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import uuid
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
@@ -24,7 +25,39 @@ setup_tracing()
 setup_logging()
 logger = get_logger(__name__)
 
-app = FastAPI(title="WeatherWise.ai", version="0.2.0")
+_graph = None
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Create the graph with the appropriate checkpointer.
+
+    For Redis, AsyncRedisSaver must be created inside an async context
+    (its __init__ calls asyncio.get_running_loop()). The lifespan context
+    manager is the correct place for this in FastAPI.
+    """
+    global _graph
+    mode = os.environ.get("CHECKPOINTER_MODE", "memory")
+
+    if mode == "redis":
+        from langgraph.checkpoint.redis.aio import AsyncRedisSaver
+
+        redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379")
+        logger.info("redis_checkpointer_init", redis_url=redis_url)
+        async with AsyncRedisSaver.from_conn_string(
+            redis_url,
+            ttl={"default_ttl": 1440, "refresh_on_read": True},
+        ) as saver:
+            _graph = build_graph(checkpointer_instance=saver)
+            logger.info("graph_ready", checkpointer="redis")
+            yield
+    else:
+        _graph = build_graph(checkpointer=mode)
+        logger.info("graph_ready", checkpointer=mode)
+        yield
+
+
+app = FastAPI(title="WeatherWise.ai", version="0.2.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -32,10 +65,6 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-)
-
-_graph = build_graph(
-    checkpointer=os.environ.get("CHECKPOINTER_MODE", "memory"),
 )
 
 

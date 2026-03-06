@@ -53,8 +53,8 @@ async def synthesizer(state: WeatherState) -> dict[str, Any]:
     weather = state.get("fetched_weather", {})
     if weather:
         lines = []
-        for loc, data in weather.items():
-            lines.append(f"  {loc}: {data}")
+        for loc in sorted(weather.keys()):
+            lines.append(f"  {loc}: {weather[loc]}")
         sections.append("WEATHER DATA:\n" + "\n".join(lines))
 
     knowledge = state.get("retrieved_knowledge", [])
@@ -81,10 +81,15 @@ async def synthesizer(state: WeatherState) -> dict[str, Any]:
         async def _synthesize():
             return await llm.ainvoke(
                 [
-                    SystemMessage(content=SYSTEM_PROMPT),
-                    HumanMessage(
-                        content=f"User query: {user_query}\n\nGathered data:\n{data_block}"
-                    ),
+                    SystemMessage(content=[
+                        {"type": "text", "text": SYSTEM_PROMPT,
+                         "cache_control": {"type": "ephemeral"}},
+                    ]),
+                    HumanMessage(content=[
+                        {"type": "text",
+                         "text": f"User query: {user_query}\n\nGathered data:\n{data_block}",
+                         "cache_control": {"type": "ephemeral"}},
+                    ]),
                 ],
                 config={"tags": ["synthesizer"]},
             )

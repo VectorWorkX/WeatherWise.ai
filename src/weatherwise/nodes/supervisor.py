@@ -121,7 +121,10 @@ async def supervisor(state: WeatherState) -> dict[str, Any]:
         @llm_retry()
         async def _classify():
             return await llm.ainvoke(
-                [SystemMessage(content=f"{date_ctx}\n\n{SYSTEM_PROMPT}")]
+                [SystemMessage(content=[
+                    {"type": "text", "text": f"{date_ctx}\n\n{SYSTEM_PROMPT}",
+                     "cache_control": {"type": "ephemeral"}},
+                ])]
                 + state["messages"][-1:]  # only last message for speed
             )
 

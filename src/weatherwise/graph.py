@@ -42,6 +42,7 @@ def _get_checkpointer(mode: Literal["memory", "sqlite", "none"] = "memory"):
 
 def build_graph(
     checkpointer: Literal["memory", "sqlite", "none"] | bool = True,
+    checkpointer_instance=None,
 ) -> StateGraph:
     """Construct and compile the WeatherWise multi-agent graph.
 
@@ -63,7 +64,9 @@ def build_graph(
             synthesizer -> END
 
     Args:
-        checkpointer: If True, attach MemorySaver for conversation persistence.
+        checkpointer: Backend selection for memory/sqlite/none (dev/test).
+        checkpointer_instance: Pre-created async checkpointer (e.g., AsyncRedisSaver).
+            When provided, takes precedence over the ``checkpointer`` string.
 
     Returns:
         Compiled graph ready for `.ainvoke()` or `.astream()`.
@@ -110,12 +113,15 @@ def build_graph(
     graph.add_edge("synthesizer", END)
 
     # -- Compile --
-    # Backwards compat: bool True -> "memory", False -> "none"
-    if checkpointer is True:
-        checkpointer = "memory"
-    elif checkpointer is False:
-        checkpointer = "none"
-    cp = _get_checkpointer(checkpointer)
+    if checkpointer_instance is not None:
+        cp = checkpointer_instance
+    else:
+        # Backwards compat: bool True -> "memory", False -> "none"
+        if checkpointer is True:
+            checkpointer = "memory"
+        elif checkpointer is False:
+            checkpointer = "none"
+        cp = _get_checkpointer(checkpointer)
     compiled = graph.compile(checkpointer=cp)
     compiled.recursion_limit = RECURSION_LIMIT
     return compiled

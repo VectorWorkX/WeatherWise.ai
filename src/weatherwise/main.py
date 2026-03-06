@@ -15,11 +15,9 @@ from weatherwise.logging import setup_logging, get_logger
 from weatherwise.tracing import setup_tracing
 
 
-async def run_interactive(*, stream: bool = False, checkpointer: str = "memory") -> None:
-    """Run the WeatherWise interactive CLI (async)."""
+async def _interactive_loop(app, *, stream: bool = False) -> None:
+    """Run the interactive REPL loop against a compiled graph."""
     logger = get_logger("weatherwise.main")
-
-    app = build_graph(checkpointer=checkpointer)
     thread_id = str(uuid.uuid4())
     config = {"configurable": {"thread_id": thread_id}}
 
@@ -69,6 +67,23 @@ async def run_interactive(*, stream: bool = False, checkpointer: str = "memory")
                     break
 
 
+async def run_interactive(*, stream: bool = False, checkpointer: str = "memory") -> None:
+    """Run the WeatherWise interactive CLI (async)."""
+    if checkpointer == "redis":
+        from langgraph.checkpoint.redis.aio import AsyncRedisSaver
+
+        redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379")
+        async with AsyncRedisSaver.from_conn_string(
+            redis_url,
+            ttl={"default_ttl": 1440, "refresh_on_read": True},
+        ) as saver:
+            app = build_graph(checkpointer_instance=saver)
+            await _interactive_loop(app, stream=stream)
+    else:
+        app = build_graph(checkpointer=checkpointer)
+        await _interactive_loop(app, stream=stream)
+
+
 def main() -> None:
     """Sync entry point — spins up the async event loop."""
     load_dotenv()
@@ -84,7 +99,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--checkpointer",
-        choices=["memory", "sqlite", "none"],
+        choices=["memory", "sqlite", "redis", "none"],
         default="memory",
         help="Checkpointer backend (default: memory)",
     )
