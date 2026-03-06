@@ -1,7 +1,6 @@
 import { useEffect, useRef } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Wifi, WifiOff } from "lucide-react";
 import { useWeatherChat } from "../hooks/useWeatherChat";
 import MessageList from "../components/chat/MessageList";
 import ChatInput from "../components/chat/ChatInput";
@@ -12,12 +11,10 @@ export default function ChatPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const autoSentRef = useRef(false);
 
-  // Auto-send query from URL param (from landing page card clicks)
   useEffect(() => {
     const q = searchParams.get("q");
     if (q && isConnected && !autoSentRef.current) {
       autoSentRef.current = true;
-      // Small delay to let WebSocket stabilize
       const timer = setTimeout(() => {
         sendMessage(q);
         setSearchParams({}, { replace: true });
@@ -34,34 +31,43 @@ export default function ChatPage() {
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      transition={{ duration: 0.4 }}
-      className="relative z-10 flex h-screen flex-col pt-14"
+      transition={{ duration: 0.3 }}
+      className="flex h-screen flex-col"
     >
-      {/* Connection status */}
-      <div className="flex items-center justify-center gap-1.5 py-1 text-[10px]">
-        {isConnected ? (
-          <>
-            <Wifi size={10} className="text-emerald-500" />
-            <span className="text-emerald-500/70">Connected</span>
-          </>
-        ) : (
-          <>
-            <WifiOff size={10} className="text-red-400" />
-            <span className="text-red-400/70">Reconnecting...</span>
-          </>
-        )}
+      {/* Minimal top bar */}
+      <div className="flex items-center justify-between px-5 py-3">
+        <Link to="/" className="flex items-center gap-2">
+          <img
+            src="/weatherwise-icon.png"
+            alt="WeatherWise"
+            className="h-6 w-6"
+            style={{ filter: "saturate(0.6) hue-rotate(180deg) brightness(1.3)" }}
+          />
+          <span className="text-[14px] font-medium tracking-wide">
+            <span className="bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">WeatherWise</span>
+            <span className="text-neutral-600">.ai</span>
+          </span>
+        </Link>
+        <div className="flex items-center gap-2">
+          <div
+            className={`h-1.5 w-1.5 rounded-full ${
+              isConnected ? "bg-emerald-400" : "bg-red-400 animate-pulse"
+            }`}
+          />
+          <span className="text-xs text-neutral-600">
+            {isConnected ? "Connected" : "Reconnecting..."}
+          </span>
+        </div>
       </div>
 
-      {/* Messages or welcome */}
       {messages.length === 0 ? (
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex flex-1 items-center justify-center overflow-y-auto">
           <WelcomeMessage onQueryClick={handleQueryClick} />
         </div>
       ) : (
         <MessageList messages={messages} onApproval={sendApproval} />
       )}
 
-      {/* Input */}
       <ChatInput
         onSend={sendMessage}
         disabled={!isConnected || isLoading}

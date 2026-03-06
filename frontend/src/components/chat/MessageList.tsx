@@ -13,9 +13,9 @@ export default function MessageList({ messages, onApproval }: Props) {
   return (
     <div
       ref={scrollRef}
-      className="flex-1 overflow-y-auto px-4 py-4"
+      className="flex-1 overflow-y-auto px-4 py-6"
     >
-      <div className="mx-auto flex max-w-3xl flex-col gap-4">
+      <div className="mx-auto flex max-w-3xl flex-col gap-6">
         {messages.map((msg) => (
           <MessageBubble key={msg.id} message={msg} onApproval={onApproval} />
         ))}

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, type KeyboardEvent } from "react";
-import { Send } from "lucide-react";
+import { ArrowUp } from "lucide-react";
 
 interface Props {
   onSend: (message: string) => void;
@@ -17,12 +17,11 @@ export default function ChatInput({ onSend, disabled, initialValue }: Props) {
     }
   }, [initialValue]);
 
-  // Auto-resize textarea
   useEffect(() => {
     const el = textareaRef.current;
     if (el) {
       el.style.height = "auto";
-      el.style.height = `${Math.min(el.scrollHeight, 150)}px`;
+      el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
     }
   }, [value]);
 
@@ -40,29 +39,31 @@ export default function ChatInput({ onSend, disabled, initialValue }: Props) {
   };
 
   return (
-    <div className="border-t border-slate-200/60 glass">
-      <div className="mx-auto flex max-w-3xl items-end gap-3 px-4 py-3">
-        <textarea
-          ref={textareaRef}
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="Ask about the weather..."
-          rows={1}
-          disabled={disabled}
-          className="flex-1 resize-none rounded-xl border border-slate-200 bg-white/80 px-4 py-2.5 text-sm text-slate-800 placeholder-slate-400 outline-none transition focus:border-emerald-300 focus:ring-1 focus:ring-emerald-300/30 disabled:opacity-50"
-        />
-        <button
-          onClick={handleSend}
-          disabled={disabled || !value.trim()}
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-400 text-white shadow-lg transition hover:bg-emerald-500 disabled:opacity-40 disabled:shadow-none"
-        >
-          <Send size={18} />
-        </button>
+    <div className="px-4 pb-4 pt-2">
+      <div className="mx-auto max-w-3xl">
+        <div className="flex items-end gap-3 rounded-2xl border border-white/[0.12] bg-white/[0.06] px-5 py-3 transition-colors focus-within:border-white/[0.2] focus-within:bg-white/[0.08]">
+          <textarea
+            ref={textareaRef}
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Ask about the weather..."
+            rows={1}
+            disabled={disabled}
+            className="flex-1 resize-none bg-transparent py-1.5 text-[15px] text-neutral-200 placeholder-neutral-500 outline-none disabled:opacity-50"
+          />
+          <button
+            onClick={handleSend}
+            disabled={disabled || !value.trim()}
+            className="relative z-10 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-neutral-900 transition hover:bg-neutral-200 disabled:opacity-20 disabled:hover:bg-white"
+          >
+            <ArrowUp size={16} strokeWidth={2.5} />
+          </button>
+        </div>
+        <p className="mt-2 text-center text-xs text-neutral-700">
+          WeatherWise can make mistakes. Verify important weather information.
+        </p>
       </div>
-      <p className="pb-2 text-center text-[10px] text-slate-400">
-        Press Enter to send &middot; Shift+Enter for new line
-      </p>
     </div>
   );
 }

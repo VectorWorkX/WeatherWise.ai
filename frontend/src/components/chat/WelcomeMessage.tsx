@@ -1,5 +1,12 @@
 import { motion } from "framer-motion";
-import { CAPABILITIES } from "../../config/capabilities";
+import { CloudSun, MapPin, Thermometer, Wind } from "lucide-react";
+
+const SUGGESTIONS = [
+  { icon: CloudSun, query: "What's the weather in San Francisco right now?" },
+  { icon: MapPin, query: "Compare weather between Tokyo and London" },
+  { icon: Thermometer, query: "Is it hotter in Phoenix or Miami today?" },
+  { icon: Wind, query: "Are there any severe weather alerts in Texas?" },
+];
 
 interface Props {
   onQueryClick: (query: string) => void;
@@ -8,40 +15,39 @@ interface Props {
 export default function WelcomeMessage({ onQueryClick }: Props) {
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
+      initial={{ opacity: 0, y: 15 }}
       animate={{ opacity: 1, y: 0 }}
-      className="mx-auto max-w-3xl px-4 py-12"
+      transition={{ duration: 0.5 }}
+      className="w-full max-w-3xl px-4"
     >
-      <div className="text-center">
+      <div className="mb-10 text-center">
         <img
           src="/weatherwise-icon.png"
-          alt="WeatherWise.ai"
-          className="mx-auto mb-4 h-16 w-auto object-contain"
+          alt="WeatherWise"
+          className="mx-auto mb-6 h-11 w-11 opacity-80"
+          style={{ filter: "saturate(0.6) hue-rotate(180deg) brightness(1.3)" }}
         />
-        <h2 className="mb-2 text-xl font-bold text-slate-700">
-          How can I help you today?
+        <h2 className="mb-2 text-2xl font-medium text-neutral-200">
+          What do you want to know?
         </h2>
-        <p className="mb-8 text-sm text-slate-500">
-          Ask me anything about weather — from live forecasts to atmospheric
-          science.
+        <p className="text-[15px] text-neutral-500">
+          Weather forecasts, comparisons, alerts, and atmospheric science.
         </p>
       </div>
 
-      <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
-        {CAPABILITIES.map((cap, i) => (
+      <div className="grid gap-2.5 sm:grid-cols-2">
+        {SUGGESTIONS.map(({ icon: Icon, query }, i) => (
           <motion.button
-            key={cap.id}
-            initial={{ opacity: 0, y: 10 }}
+            key={query}
+            initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 + i * 0.05 }}
-            onClick={() => onQueryClick(cap.example)}
-            className={`group rounded-xl border-2 border-slate-400/40 ${cap.bgTint} px-3 py-3 text-left transition hover:border-emerald-300/60 hover:bg-white/80 hover:shadow-sm hover:shadow-emerald-500/5`}
+            transition={{ delay: 0.15 + i * 0.05 }}
+            onClick={() => onQueryClick(query)}
+            className="group flex items-start gap-3 rounded-xl border border-white/[0.06] px-4 py-3.5 text-left transition hover:border-blue-500/20 hover:bg-white/[0.03]"
           >
-            <p className="mb-1 text-sm font-semibold text-slate-700 transition group-hover:text-slate-800">
-              {cap.title}
-            </p>
-            <p className="text-sm text-slate-600 transition group-hover:text-slate-700">
-              &ldquo;{cap.example}&rdquo;
+            <Icon size={16} className="mt-0.5 shrink-0 text-neutral-600 transition group-hover:text-blue-400" />
+            <p className="text-[14px] text-neutral-500 transition group-hover:text-neutral-300">
+              {query}
             </p>
           </motion.button>
         ))}

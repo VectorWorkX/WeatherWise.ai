@@ -1,48 +1,30 @@
-import { Link, useLocation } from "react-router-dom";
-import { ArrowLeft, MessageSquare } from "lucide-react";
-import { motion } from "framer-motion";
+import { Link } from "react-router-dom";
+import { MessageSquare } from "lucide-react";
 
 export default function Navbar() {
-  const location = useLocation();
-  const isChat = location.pathname === "/chat";
-
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 glass">
-      <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
-        <div className="flex items-center gap-3">
-          {isChat && (
-            <Link
-              to="/"
-              className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-sm text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
-            >
-              <ArrowLeft size={16} />
-              <span className="hidden sm:inline">Home</span>
-            </Link>
-          )}
-          <Link to="/" className="flex items-center gap-2.5">
-            <motion.img
-              layoutId="logo"
-              src="/weatherwise-icon.png"
-              alt="WeatherWise.ai"
-              className="h-8 w-auto object-contain"
-            />
-            <span className="text-lg font-bold tracking-tight text-stroke-sm">
-              <span className="text-orange-350">Weather</span>
-              <span className="text-emerald-500">Wise</span>
-              <span className="text-emerald-500">.ai</span>
-            </span>
-          </Link>
-        </div>
+    <nav className="fixed top-0 left-0 right-0 z-50">
+      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
+        <Link to="/" className="flex items-center gap-2.5">
+          <img
+            src="/weatherwise-icon.png"
+            alt="WeatherWise"
+            className="h-7 w-7"
+            style={{ filter: "saturate(0.6) hue-rotate(180deg) brightness(1.3)" }}
+          />
+          <span className="text-[15px] font-medium tracking-wide">
+            <span className="bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">WeatherWise</span>
+            <span className="text-neutral-600">.ai</span>
+          </span>
+        </Link>
 
-        {!isChat && (
-          <Link
-            to="/chat"
-            className="flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-emerald-500/20 transition hover:bg-emerald-600 hover:shadow-emerald-500/30"
-          >
-            <MessageSquare size={16} />
-            Start Chatting
-          </Link>
-        )}
+        <Link
+          to="/chat"
+          className="flex items-center gap-2 rounded-full bg-white/[0.07] px-5 py-2 text-sm font-medium text-neutral-300 transition hover:bg-white/[0.12] hover:text-white"
+        >
+          <MessageSquare size={14} />
+          Start Chatting
+        </Link>
       </div>
     </nav>
   );

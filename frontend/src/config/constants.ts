@@ -8,12 +8,12 @@ export const INTENT_LABELS: Record<string, string> = {
 };
 
 export const INTENT_COLORS: Record<string, string> = {
-  real_time: "from-blue-200 to-blue-300",
-  comparative: "from-blue-200 to-blue-300",
-  lifestyle: "from-blue-200 to-blue-300",
-  safety: "from-blue-200 to-blue-300",
-  explanation: "from-blue-200 to-blue-300",
-  math: "from-blue-200 to-blue-300",
+  real_time: "bg-white/[0.06] text-neutral-300",
+  comparative: "bg-white/[0.06] text-neutral-300",
+  lifestyle: "bg-white/[0.06] text-neutral-300",
+  safety: "bg-amber-500/10 text-amber-300",
+  explanation: "bg-white/[0.06] text-neutral-300",
+  math: "bg-white/[0.06] text-neutral-300",
 };
 
 export const WS_URL =

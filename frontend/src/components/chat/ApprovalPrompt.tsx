@@ -10,29 +10,28 @@ interface Props {
 export default function ApprovalPrompt({ message, onApprove, onReject }: Props) {
   return (
     <motion.div
-      initial={{ opacity: 0, scale: 0.95 }}
+      initial={{ opacity: 0, scale: 0.97 }}
       animate={{ opacity: 1, scale: 1 }}
-      transition={{ duration: 0.3 }}
-      className="flex justify-start"
+      transition={{ duration: 0.2 }}
     >
-      <div className="max-w-[85%] sm:max-w-[75%] rounded-2xl border border-amber-400/60 bg-amber-50/80 backdrop-blur-md px-5 py-4 shadow-md">
+      <div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.06] px-4 py-3">
         <div className="flex items-start gap-3">
-          <AlertTriangle size={20} className="mt-0.5 shrink-0 text-amber-600" />
+          <AlertTriangle size={16} className="mt-0.5 shrink-0 text-amber-400" />
           <div className="flex-1">
-            <p className="text-sm font-medium text-amber-900">{message}</p>
+            <p className="text-sm text-neutral-300">{message}</p>
             <div className="mt-3 flex gap-2">
               <button
                 onClick={onApprove}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm transition hover:bg-emerald-700"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-white/[0.1] px-3 py-1.5 text-xs font-medium text-neutral-200 transition hover:bg-white/[0.15]"
               >
-                <Check size={14} />
+                <Check size={13} />
                 Approve
               </button>
               <button
                 onClick={onReject}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm transition hover:bg-slate-300"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-white/[0.05] px-3 py-1.5 text-xs font-medium text-neutral-400 transition hover:bg-white/[0.08]"
               >
-                <X size={14} />
+                <X size={13} />
                 Dismiss
               </button>
             </div>

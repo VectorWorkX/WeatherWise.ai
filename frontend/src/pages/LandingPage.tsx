@@ -1,17 +1,11 @@
+import Navbar from "../components/layout/Navbar";
 import HeroSection from "../components/landing/HeroSection";
-import CapabilityGrid from "../components/landing/CapabilityGrid";
-import type { WeatherMode } from "../types/weather";
 
-interface Props {
-  onHoverMode: (mode: WeatherMode) => void;
-  onLeaveMode: () => void;
-}
-
-export default function LandingPage({ onHoverMode, onLeaveMode }: Props) {
+export default function LandingPage() {
   return (
     <main className="relative z-10 min-h-screen">
+      <Navbar />
       <HeroSection />
-      <CapabilityGrid onHoverMode={onHoverMode} onLeaveMode={onLeaveMode} />
     </main>
   );
 }

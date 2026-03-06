@@ -6,12 +6,10 @@ interface Props {
 }
 
 export default function IntentBadge({ intent, label }: Props) {
-  const gradient = INTENT_COLORS[intent] || "from-slate-500 to-slate-600";
+  const color = INTENT_COLORS[intent] || "bg-slate-500/15 text-slate-400";
 
   return (
-    <span
-      className={`inline-block rounded-full bg-gradient-to-r ${gradient} px-3 py-0.5 text-xs font-semibold text-blue-800 shadow-sm`}
-    >
+    <span className={`inline-block rounded-full px-3 py-0.5 text-xs font-medium ${color}`}>
       {label}
     </span>
   );
