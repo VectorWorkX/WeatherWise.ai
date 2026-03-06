@@ -37,16 +37,6 @@ def _get_vectorstore():
     return _vectorstore_cache
 
 
-def _get_index_stats() -> int:
-    """Return total vector count from the Pinecone index."""
-    from pinecone import Pinecone
-
-    pc = Pinecone(api_key=os.environ["PINECONE_API_KEY"])
-    idx = pc.Index(os.environ["PINECONE_INDEX_NAME"])
-    stats = idx.describe_index_stats()
-    return stats.get("total_vector_count", 0)
-
-
 def search_knowledge_base(query: str) -> list[str]:
     """Search the WeatherWise atmospheric science knowledge base.
 
@@ -58,20 +48,8 @@ def search_knowledge_base(query: str) -> list[str]:
 
     Returns:
         List of formatted knowledge strings with source citations.
-        Returns a "no results" message if the knowledge base is empty
-        or no relevant documents are found.
+        Returns a "no results" message if no relevant documents are found.
     """
-    try:
-        total_vectors = _get_index_stats()
-    except Exception as e:
-        return [f"Failed to connect to knowledge base: {e}"]
-
-    if total_vectors == 0:
-        return [
-            "The knowledge base is currently empty. No atmospheric science "
-            "documents have been ingested yet."
-        ]
-
     try:
         vectorstore = _get_vectorstore()
     except Exception as e:

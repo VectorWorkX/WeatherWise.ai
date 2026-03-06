@@ -24,10 +24,11 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+from pinecone import Pinecone
+
 from weatherwise.tools.vector_search import (
     RELEVANCE_THRESHOLD,
     _get_vectorstore,
-    _get_index_stats,
 )
 
 # ---------------------------------------------------------------------------
@@ -50,10 +51,17 @@ TEST_QUERIES = [
 ]
 
 
+def _get_index_vector_count() -> int:
+    """Query Pinecone for total vector count (verification only)."""
+    pc = Pinecone(api_key=os.environ["PINECONE_API_KEY"])
+    idx = pc.Index(os.environ["PINECONE_INDEX_NAME"])
+    return idx.describe_index_stats().get("total_vector_count", 0)
+
+
 def verify_collection_stats() -> None:
     """Print basic statistics about the Pinecone index."""
     index_name = os.environ.get("PINECONE_INDEX_NAME", "unknown")
-    total = _get_index_stats()
+    total = _get_index_vector_count()
     print(f"Pinecone index '{index_name}': {total} vectors")
 
     if total == 0:
@@ -116,7 +124,7 @@ def run_test_suite() -> None:
 
     verify_collection_stats()
 
-    total_vectors = _get_index_stats()
+    total_vectors = _get_index_vector_count()
     if total_vectors == 0:
         print("\nCannot run test queries on empty index. Exiting.")
         return

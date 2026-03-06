@@ -60,11 +60,11 @@ async def planner(state: WeatherState) -> dict[str, Any]:
 
     try:
         llm = ChatAnthropic(
-            model="claude-sonnet-4-20250514",
+            model="claude-haiku-4-5-20251001",
             api_key=os.environ.get("ANTHROPIC_API_KEY"),
             max_tokens=500,
             temperature=0,
-            timeout=60.0,
+            timeout=30.0,
         )
         structured_llm = llm.with_structured_output(PlanOutput)
 
