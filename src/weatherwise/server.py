@@ -59,9 +59,20 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="WeatherWise.ai", version="0.2.0", lifespan=lifespan)
 
+_cors_origins = [
+    "https://weather-wise.ai",
+    "https://www.weather-wise.ai",
+    "https://weatherwise-2i5llicxea-uc.a.run.app",
+    "https://weatherwise-228097686588.us-central1.run.app",
+]
+if os.environ.get("CORS_ORIGIN"):
+    _cors_origins.append(os.environ["CORS_ORIGIN"])
+if os.environ.get("ENVIRONMENT") != "production":
+    _cors_origins.extend(["http://localhost:5173", "http://localhost:5174"])
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -291,6 +302,9 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
 # ---------------------------------------------------------------------------
 
 if os.environ.get("SERVE_FRONTEND") == "1":
-    _frontend_dist = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
+    _frontend_dist = Path(os.environ.get("FRONTEND_DIST_DIR", "frontend/dist")).resolve()
+    if not _frontend_dist.exists():
+        # Fallback: relative to source file (dev mode)
+        _frontend_dist = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
     if _frontend_dist.exists():
         app.mount("/", StaticFiles(directory=str(_frontend_dist), html=True), name="frontend")

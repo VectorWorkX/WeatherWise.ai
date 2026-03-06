@@ -12,7 +12,7 @@ WeatherWise.ai is a stateful multi-agent weather system using a Planner-Executor
 - **RAG:** Pinecone (serverless, free tier) + OpenAI `text-embedding-3-small` (1536 dims), summary-to-source multi-vector retrieval, parent content in vector metadata
 - **Document Parsing:** `unstructured` (`hi_res` strategy) for PDF text, tables, images — ingestion only
 - **Tools:** Xweather MCP tools (real-time), Pinecone RAG retrieval, math operations
-- **Checkpointing:** AsyncRedisSaver (production, 24h TTL), MemorySaver (dev), AsyncSqliteSaver (local persistent)
+- **Checkpointing:** MemorySaver (production + dev), AsyncSqliteSaver (local persistent). Redis planned via Redis Cloud free tier (GCP Memorystore lacks RediSearch module needed by langgraph-checkpoint-redis v0.3+)
 - **Prompt Caching:** Anthropic native prompt caching via `cache_control` content blocks (GA, no beta header)
 - **Validation:** Pydantic models for structured output
 - **Environment:** Python 3.11+, uv for dependency management
@@ -51,6 +51,16 @@ WeatherWise.ai is a stateful multi-agent weather system using a Planner-Executor
 8. **No Guessing:** Only factual answers based on verified documentation or code. If unsure, say so.
 9. **Suggest Improvements:** If the current approach is suboptimal, flag it and propose alternatives.
 10. **Informed Architectural Judgments:** Before recommending any architectural change, you MUST: (a) fully read and understand the existing implementation — every node, every state field, every design decision, (b) understand WHY the current architecture was chosen — ask the user if the intent isn't clear from the code, (c) identify the specific implementation gaps vs. actual architectural flaws — "broken" does not mean "wrong design", (d) never conflate "a different branch works" with "a different branch has better architecture." A working prototype proves execution quality, not design superiority.
+
+## Deployment
+- **Platform:** GCP Cloud Run (us-central1), project `weatherwise-486608`
+- **Infrastructure:** Terraform-managed (`infra/` directory)
+- **Image:** `us-central1-docker.pkg.dev/weatherwise-486608/weatherwise/app:latest`
+- **Build:** Cloud Build (`gcloud builds submit`)
+- **URLs:** `https://weatherwise-228097686588.us-central1.run.app` (Cloud Run), `https://weather-wise.ai` (custom domain via Cloudflare)
+- **Frontend:** Served from same container (`SERVE_FRONTEND=1`, `FRONTEND_DIST_DIR=/app/frontend/dist`)
+- **Secrets:** GCP Secret Manager (6 keys), accessed via Cloud Run SA IAM
+- **Cost:** ~$3-8/mo (usage-based, $0 when idle)
 
 ## Design Philosophy
 "Reliability first. No infinite loops. No race conditions. Degrade gracefully on failure."

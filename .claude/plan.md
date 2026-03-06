@@ -191,6 +191,27 @@
   ```
   One-line change: `sorted(weather.keys())` instead of `weather.items()`.
 
+## Phase 7: Pinecone Migration & Speed Optimization
+- [x] Migrate vector DB from ChromaDB to Pinecone serverless (free tier)
+- [x] Write migration script (`scripts/migrate_to_pinecone.py`)
+- [x] Update `vector_search.py` for Pinecone (cosine similarity, threshold 0.3)
+- [x] Store parent content in vector metadata (eliminate docstore dependency)
+- [x] Update `build_knowledge.py` for Pinecone upserts
+- [x] Update `verify_retrieval.py` with Pinecone stats function
+- [x] Remove `_get_index_stats()` pre-check (save ~200-400ms/query)
+- [x] Switch planner LLM from Sonnet to Haiku (save ~2-3s/query)
+
+## Phase 8: GCP Deployment
+- [x] Create multi-stage Dockerfile (Node frontend + Python backend)
+- [x] Lock CORS to production domains
+- [x] Create Terraform infrastructure (Cloud Run, Secret Manager, Artifact Registry)
+- [x] Build and push Docker image via Cloud Build
+- [x] Deploy to Cloud Run (`https://weatherwise-228097686588.us-central1.run.app`)
+- [x] Verify health endpoint and frontend serving
+- [ ] Cloudflare DNS setup for weather-wise.ai
+- [ ] Rotate all API keys (exposed in git history)
+- [ ] GitHub Actions CI/CD
+
 ### Files modified (summary)
 | File | Change |
 |---|---|

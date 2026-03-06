@@ -29,3 +29,9 @@ data/extracted_images/
 
 # Keep the data directory structure
 !data/DATASET_SOURCES.md
+
+# Terraform
+infra/.terraform/
+infra/*.tfstate*
+infra/*.tfvars
+infra/terraform-key.json

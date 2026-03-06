@@ -1,0 +1,17 @@
+# Copy this to terraform.tfvars and fill in real values.
+# NEVER commit terraform.tfvars to git.
+
+project_id = "weatherwise-486608"
+region     = "us-central1"
+
+enable_redis            = true
+cloud_run_min_instances = 0
+cloud_run_max_instances = 3
+
+# API keys — rotate these before deploying (they're in git history)
+anthropic_api_key      = ""
+openai_api_key         = ""
+pinecone_api_key       = ""
+xweather_client_id     = ""
+xweather_client_secret = ""
+langchain_api_key      = ""
