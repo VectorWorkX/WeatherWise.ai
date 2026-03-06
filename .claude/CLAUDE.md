@@ -12,7 +12,8 @@ WeatherWise.ai is a stateful multi-agent weather system using a Planner-Executor
 - **RAG:** ChromaDB (local persistent) + OpenAI `text-embedding-3-small` (1536 dims), summary-to-source multi-vector retrieval
 - **Document Parsing:** `unstructured` (`hi_res` strategy) for PDF text, tables, images — ingestion only
 - **Tools:** Xweather MCP tools (real-time), ChromaDB RAG retrieval, math operations
-- **Checkpointing:** LangGraph MemorySaver (in-memory, dev/test)
+- **Checkpointing:** AsyncRedisSaver (production, 24h TTL), MemorySaver (dev), AsyncSqliteSaver (local persistent)
+- **Prompt Caching:** Anthropic native prompt caching via `cache_control` content blocks (GA, no beta header)
 - **Validation:** Pydantic models for structured output
 - **Environment:** Python 3.11+, uv for dependency management
 

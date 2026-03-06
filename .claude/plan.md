@@ -65,3 +65,140 @@
 - [x] P2.11: LangSmith tracing (auto-enabled when LANGCHAIN_API_KEY set)
 - [x] P3.12: FastAPI/WebSocket server (POST /query, WS /ws)
 - [x] P3.13: Graceful degradation (all nodes return partial results on failure)
+
+## Phase 6: Redis Persistence & Prompt Caching
+
+### 6.1 — Add `langgraph-checkpoint-redis` dependency
+- [x] Add `langgraph-checkpoint-redis>=0.3.0` to `pyproject.toml` dependencies
+- [x] Run `uv sync` to install the package and its transitive deps (`redis`, `redisvl`)
+
+### 6.2 — Refactor `graph.py` to accept a pre-created checkpointer
+**Why:** `AsyncRedisSaver.__init__` calls `asyncio.get_running_loop()` (line 102 of aio.py), so it MUST be created inside an async context. Our current `build_graph()` is a sync function called at module level. We cannot instantiate `AsyncRedisSaver` inside it.
+**What:**
+- [x] Add a `checkpointer_instance` parameter to `build_graph()`:
+  ```python
+  def build_graph(
+      checkpointer: Literal["memory", "sqlite", "none"] | bool = True,
+      checkpointer_instance=None,  # pre-created async saver (e.g., AsyncRedisSaver)
+  ) -> StateGraph:
+  ```
+  If `checkpointer_instance` is provided, use it directly; otherwise fall back to `_get_checkpointer()` for memory/sqlite/none (existing behavior, untouched).
+- [x] Keep `_get_checkpointer()` as-is — it only handles memory/sqlite/none. No "redis" case inside it.
+
+### 6.3 — Update `server.py` to create `AsyncRedisSaver` in async lifespan
+**Why:** `server.py` currently creates the graph at module level (`_graph = build_graph(...)`). For Redis, we need an async context. FastAPI's lifespan is the correct place.
+**What:**
+- [x] Add a FastAPI `lifespan` async context manager:
+  ```python
+  from contextlib import asynccontextmanager
+
+  @asynccontextmanager
+  async def lifespan(app: FastAPI):
+      global _graph
+      mode = os.environ.get("CHECKPOINTER_MODE", "memory")
+      if mode == "redis":
+          from langgraph.checkpoint.redis.aio import AsyncRedisSaver
+          redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379")
+          async with AsyncRedisSaver.from_conn_string(
+              redis_url,
+              ttl={"default_ttl": 1440, "refresh_on_read": True},
+          ) as saver:
+              _graph = build_graph(checkpointer_instance=saver)
+              yield
+      else:
+          _graph = build_graph(checkpointer=mode)
+          yield
+  ```
+  - `from_conn_string` is an `@asynccontextmanager` on `AsyncRedisSaver` — it creates the instance, calls `asetup()` (creates Redis search indices), and yields the ready saver.
+  - `ttl={"default_ttl": 1440}` = 24 hours in minutes.
+  - `refresh_on_read: True` resets the 24h TTL each time a session is accessed, so active conversations never expire mid-use.
+- [x] Pass `lifespan=lifespan` to the `FastAPI()` constructor.
+- [x] Move the current module-level `_graph = build_graph(...)` inside the `else` branch of the lifespan (for non-redis modes).
+- [x] Initialize `_graph = None` at module level (endpoints will use it after lifespan sets it).
+
+### 6.4 — Update `main.py` to support Redis checkpointer
+**Why:** `main.py` runs `run_interactive()` which is already `async def`, so creating `AsyncRedisSaver` is straightforward.
+**What:**
+- [x] Add `"redis"` to the `--checkpointer` CLI choices.
+- [x] Inside `run_interactive()`, if `checkpointer == "redis"`:
+  ```python
+  if checkpointer == "redis":
+      from langgraph.checkpoint.redis.aio import AsyncRedisSaver
+      redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379")
+      async with AsyncRedisSaver.from_conn_string(
+          redis_url,
+          ttl={"default_ttl": 1440, "refresh_on_read": True},
+      ) as saver:
+          app = build_graph(checkpointer_instance=saver)
+          # run interactive loop inside this context
+  else:
+      app = build_graph(checkpointer=checkpointer)
+  ```
+- [x] Refactor the interactive while-loop into a helper to avoid duplicating the loop code between the two branches.
+
+### 6.5 — Add `REDIS_URL` environment variable
+- [x] Add `REDIS_URL` to `.env`: `REDIS_URL=redis://localhost:6379`
+- [x] Document in CLAUDE.md under Tech Stack
+
+### 6.6 — Prompt caching: Synthesizer (`nodes/synthesizer.py`)
+**Why:** The synthesizer uses Claude Sonnet 4 (most expensive model). Its system prompt (~300 tokens) is identical on every call. No beta header needed — prompt caching is GA with Anthropic SDK v0.77.0 and langchain-anthropic v1.3.1 (verified: `anthropic.types.CacheControlEphemeralParam` exists).
+**What:**
+- [x] Change the `SystemMessage` from a plain string to content block list with `cache_control`:
+  ```python
+  SystemMessage(content=[
+      {"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}
+  ])
+  ```
+- [x] Change the `HumanMessage` (data block) to content block format with `cache_control`:
+  ```python
+  HumanMessage(content=[
+      {"type": "text", "text": f"User query: {user_query}\n\nGathered data:\n{data_block}",
+       "cache_control": {"type": "ephemeral"}}
+  ])
+  ```
+- [x] Verify `_extract_text()` in `server.py` handles list content blocks — it already does (returns `block.get("text", "")` for dict blocks). No server.py change needed.
+
+### 6.7 — Prompt caching: Planner (`nodes/planner.py`)
+**Why:** The planner also uses Claude Sonnet 4. Its system prompt (~400 tokens with examples) is identical on every call.
+**What:**
+- [x] Change the `SystemMessage` to content block format with `cache_control`:
+  ```python
+  SystemMessage(content=[
+      {"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}
+  ])
+  ```
+- [x] The planner's second argument is the user's message history (varies every call) — no `cache_control` on it.
+
+### 6.8 — Prompt caching: Supervisor (`nodes/supervisor.py`)
+**Why:** The supervisor is called on every single user message. It uses Claude Haiku 4.5 (cheap per-call), but the system prompt is ~1,200 tokens. Caching it is a one-line change with zero downside.
+**What:**
+- [x] Change the `SystemMessage` to content block format:
+  ```python
+  SystemMessage(content=[
+      {"type": "text", "text": f"{date_ctx}\n\n{SYSTEM_PROMPT}",
+       "cache_control": {"type": "ephemeral"}}
+  ])
+  ```
+  Note: `date_ctx` changes every minute, but Anthropic's prompt cache TTL is 5 minutes, so within a burst of messages the prefix is stable and will hit.
+
+### 6.9 — Sort weather keys for cache consistency (`nodes/synthesizer.py`)
+**Why:** Anthropic prompt caching is prefix-based. If two requests produce the same data but in different dict iteration order, the cache misses. Sorting guarantees identical prefixes for identical data.
+**What:**
+- [x] Sort `fetched_weather` keys alphabetically when building the data block:
+  ```python
+  for loc in sorted(weather.keys()):
+      lines.append(f"  {loc}: {weather[loc]}")
+  ```
+  One-line change: `sorted(weather.keys())` instead of `weather.items()`.
+
+### Files modified (summary)
+| File | Change |
+|---|---|
+| `pyproject.toml` | Add `langgraph-checkpoint-redis` dep |
+| `src/weatherwise/graph.py` | Add `checkpointer_instance` param to `build_graph()` |
+| `src/weatherwise/server.py` | FastAPI lifespan for async Redis saver creation |
+| `src/weatherwise/main.py` | Add `"redis"` CLI option, async saver in `run_interactive()` |
+| `src/weatherwise/nodes/synthesizer.py` | Prompt caching (system + data blocks) + sort weather keys |
+| `src/weatherwise/nodes/planner.py` | Prompt caching (system block) |
+| `src/weatherwise/nodes/supervisor.py` | Prompt caching (system block) |
+| `.env` | Add `REDIS_URL` |
