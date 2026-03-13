@@ -1,8 +1,7 @@
 """Supervisor node — classifies intent and routes the query.
 
-Classifies into 8 intent buckets. Weather intents proceed to the planner.
-Greetings and off-topic queries get a direct LLM response without invoking
-the planner/executor pipeline.
+Three-way classification: weather queries proceed to the planner,
+greetings and off-topic queries get a direct LLM response.
 """
 
 from __future__ import annotations
@@ -27,40 +26,21 @@ Analyze the user's message and assign it to exactly ONE bucket.
 
 ## Buckets
 
-1. **real_time** — Direct weather lookups for a single location.
-   Example: "What is the temp in San Jose?"
+1. **weather** — Any query related to weather, climate, forecasts, historical weather, air quality, alerts, storms, outdoor activity planning, or calculations involving weather data.
+   Examples: "What's the temp in Tokyo?", "5-day forecast for Denver", "Is it safe to go hiking tomorrow?", "Compare air quality in Delhi and Beijing", "What was the temperature on Jan 16, 2023?"
 
-2. **comparative** — Comparing weather between two or more locations.
-   Example: "Is it hotter in Phoenix or Miami right now?"
-
-3. **lifestyle** — Advisory questions about activities or planning that depend on weather.
-   Examples: "Is today good for a wedding in Napa?", "Can I take my kid to the park in San Jose?"
-
-4. **safety** — Severe weather alerts, warnings, or emergency conditions.
-   Example: "Are there any active tornado warnings in my county?"
-
-5. **explanation** — "Why" questions requiring atmospheric science or deeper reasoning.
-   Example: "Why is there a heat dome over the Midwest?"
-
-6. **math** — Queries that require fetching weather data AND performing calculations.
-   Example: "Add the temperature of Boston and New York and give the answer in Kelvin."
-
-7. **greeting** — Greetings, introductions, or questions about what WeatherWise can do.
+2. **greeting** — Greetings, introductions, or questions about what WeatherWise can do.
    Examples: "Hello", "Hi there!", "What can you do?"
 
-8. **off_topic** — Queries clearly unrelated to weather, climate, or outdoor conditions.
+3. **off_topic** — Queries clearly unrelated to weather, climate, or outdoor conditions.
    Examples: "What is the GDP of France?", "Write me a poem about cats."
 
 ## Rules
-- Choose the MOST specific bucket that fits.
-- If a query combines fetching data AND math operations, choose "math".
-- If a query asks "why" about a weather phenomenon, choose "explanation".
-- If a query mentions alerts, warnings, or emergencies, choose "safety".
-- If a query could plausibly relate to outdoor conditions or activity planning, choose "lifestyle" — not "off_topic".
+- If a query could plausibly relate to weather, climate, outdoor conditions or similar, choose "weather" — not "off_topic".
 - For "greeting" and "off_topic" buckets, you MUST populate the `response` field:
-  - **greeting**: Introduce yourself as WeatherWise, a professional AI weather intelligence system. Briefly describe your 6 capabilities. Be friendly and invite the user to ask a weather question.
+  - **greeting**: Introduce yourself as WeatherWise, a professional AI weather intelligence system. Briefly describe your capabilities (current conditions, forecasts, historical data, air quality, severe weather alerts, tropical storms, calculations, and research). Be friendly and invite the user to ask a weather question.
   - **off_topic**: Politely explain that you specialize in weather and redirect the user.
-- For all other buckets, leave the `response` field empty (null).
+- For "weather", leave the `response` field empty (null).
 """
 
 # Buckets that don't need the planner/executor pipeline
@@ -70,10 +50,9 @@ _DIRECT_RESPONSE_BUCKETS = {"greeting", "off_topic"}
 class RouteDecision(BaseModel):
     """Structured output from the supervisor LLM."""
 
-    bucket: Literal[
-        "real_time", "comparative", "lifestyle", "safety", "explanation", "math",
-        "greeting", "off_topic",
-    ] = Field(description="The intent bucket for this query.")
+    bucket: Literal["weather", "greeting", "off_topic"] = Field(
+        description="The intent bucket for this query."
+    )
     reasoning: str = Field(description="Brief explanation of why this bucket was chosen.")
     response: str | None = Field(
         default=None,
@@ -125,7 +104,7 @@ async def supervisor(state: WeatherState) -> dict[str, Any]:
                     {"type": "text", "text": f"{date_ctx}\n\n{SYSTEM_PROMPT}",
                      "cache_control": {"type": "ephemeral"}},
                 ])]
-                + state["messages"][-1:]  # only last message for speed
+                + state["messages"][-20:]  # recent history for follow-up context
             )
 
         decision: RouteDecision = await _classify()
@@ -149,4 +128,4 @@ async def supervisor(state: WeatherState) -> dict[str, Any]:
 
     except Exception as e:
         logger.error("supervisor_failed", error=str(e))
-        return {"routing": "clear", "intent": "real_time"}
+        return {"routing": "clear", "intent": "weather"}

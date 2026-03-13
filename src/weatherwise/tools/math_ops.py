@@ -8,15 +8,6 @@ import operator
 from langchain_core.tools import tool
 
 
-# Historical averages for anomaly calculations (mock baseline)
-HISTORICAL_AVERAGES: dict[str, dict[str, float]] = {
-    "santos": {"temp_c": 25.0, "wind_kph": 12.0, "humidity_pct": 75.0},
-    "new york": {"temp_c": 10.5, "wind_kph": 14.0, "humidity_pct": 60.0},
-    "london": {"temp_c": 11.0, "wind_kph": 16.0, "humidity_pct": 78.0},
-    "tokyo": {"temp_c": 15.8, "wind_kph": 11.0, "humidity_pct": 63.0},
-    "mumbai": {"temp_c": 27.5, "wind_kph": 10.0, "humidity_pct": 72.0},
-}
-
 _SAFE_OPS: dict[type, object] = {
     ast.Add: operator.add,
     ast.Sub: operator.sub,
@@ -48,33 +39,24 @@ def _safe_eval(node: ast.AST) -> float:
 
 @tool
 def calculate_anomaly(
-    location: str, field: str, current_value: float
+    location: str, field: str, current_value: float, historical_value: float
 ) -> str:
-    """Calculate how much a current weather value deviates from the historical average.
+    """Calculate how much a current weather value deviates from a historical average.
 
     Args:
-        location: City name (case-insensitive), e.g. "Santos", "New York".
-        field: Weather field — one of "temp_c", "wind_kph", "humidity_pct".
-        current_value: The current observed value to compare against the baseline.
+        location: City name, e.g. "Santos", "New York".
+        field: Weather field being compared, e.g. "temperature", "wind speed", "humidity".
+        current_value: The current observed value.
+        historical_value: The historical average value to compare against.
 
     Returns:
         Human-readable anomaly result string.
     """
-    key = location.strip().lower()
-    averages = HISTORICAL_AVERAGES.get(key)
-
-    if averages is None:
-        return f"No historical baseline available for {location}."
-
-    baseline = averages.get(field)
-    if baseline is None:
-        return f"No historical baseline for '{field}' in {location}."
-
-    anomaly = round(current_value - baseline, 2)
+    anomaly = round(current_value - historical_value, 2)
     direction = "above" if anomaly > 0 else "below"
     return (
         f"{location.title()} {field} anomaly: {current_value} vs "
-        f"historical avg {baseline} = {anomaly:+.2f} ({abs(anomaly)} {direction} normal)"
+        f"historical avg {historical_value} = {anomaly:+.2f} ({abs(anomaly)} {direction} normal)"
     )
 
 

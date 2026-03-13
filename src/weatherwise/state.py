@@ -11,11 +11,22 @@ from langgraph.graph.message import add_messages
 
 
 # ---------------------------------------------------------------------------
-# Custom reducer: merges dicts from parallel branches instead of overwriting
+# Custom reducers: support both parallel append and per-query reset
 # ---------------------------------------------------------------------------
 def merge_dicts(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any]:
-    """Merge two dicts. Right values win on key conflicts."""
+    """Merge two dicts. Right values win on key conflicts.
+    Empty right dict = reset (planner starting a new query)."""
+    if not right:
+        return {}
     return {**left, **right}
+
+
+def reset_or_add(left: list, right: list) -> list:
+    """Append items from parallel workers, or reset on empty list.
+    Workers send [index] to append. Planner sends [] to reset for new query."""
+    if not right:
+        return []
+    return left + right
 
 
 # ---------------------------------------------------------------------------
@@ -36,18 +47,21 @@ class WeatherState(TypedDict):
     plan: list[dict[str, Any]]
 
     # Tracks which plan indices have been executed.
-    # Workers append their index on completion; executor checks coverage.
-    completed_indices: Annotated[list[int], operator.add]
+    # Workers send [index] to append; planner sends [] to reset for new query.
+    completed_indices: Annotated[list[int], reset_or_add]
 
     # Weather API results keyed by location name.
     # Parallel fetchers write different keys; merge_dicts combines them.
+    # Planner sends {} to reset for new query.
     fetched_weather: Annotated[dict[str, Any], merge_dicts]
 
     # RAG retrieval results — parallel retrievers append context strings.
-    retrieved_knowledge: Annotated[list[str], operator.add]
+    # Planner sends [] to reset for new query.
+    retrieved_knowledge: Annotated[list[str], reset_or_add]
 
     # Math/calculation results — parallel calculators append result strings.
-    calculations: Annotated[list[str], operator.add]
+    # Planner sends [] to reset for new query.
+    calculations: Annotated[list[str], reset_or_add]
 
     # Routing decision set by the supervisor.
     # "clear" = proceed to planner, "ambiguous" = ask user for clarification.

@@ -20,18 +20,15 @@ logger = get_logger(__name__)
 
 CALC_SYSTEM_PROMPT = """You are a weather data calculator. You have been given fetched weather data and a calculation request.
 
-You have access to tools:
-- compute_expression: for arithmetic (e.g., "28.5 - 25.0", "(72 - 32) * 5/9")
-- calculate_anomaly: for comparing a current value against historical averages
-
 Your job:
 1. Extract the relevant numeric values from the provided weather data
-2. Use the appropriate tool to perform the calculation
+2. Read the descriptions of your available tools and pick the best one for the calculation
 3. Return a clear result with the numbers shown
 
 Always use the tools — do NOT do mental math."""
 
 _calc_tools = [compute_expression, calculate_anomaly]
+_calc_tool_map = {t.name: t for t in _calc_tools}
 
 _calc_llm: ChatAnthropic | None = None
 
@@ -91,18 +88,14 @@ async def calculator_agent(state: CalcPayload) -> dict[str, Any]:
             # Execute tool calls and feed results back
             from langchain_core.messages import ToolMessage
             for tool_call in response.tool_calls:
-                tool_name = tool_call["name"]
-                tool_args = tool_call["args"]
-
-                if tool_name == "compute_expression":
-                    result = compute_expression.invoke(tool_args)
-                elif tool_name == "calculate_anomaly":
-                    result = calculate_anomaly.invoke(tool_args)
-                else:
-                    result = f"Unknown tool: {tool_name}"
-
+                tool_fn = _calc_tool_map.get(tool_call["name"])
+                tool_result = (
+                    tool_fn.invoke(tool_call["args"])
+                    if tool_fn
+                    else f"Unknown tool: {tool_call['name']}"
+                )
                 messages.append(ToolMessage(
-                    content=str(result),
+                    content=str(tool_result),
                     tool_call_id=tool_call["id"],
                 ))
 

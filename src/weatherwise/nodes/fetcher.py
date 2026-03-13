@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from datetime import datetime
 from typing import Any
 
 from langchain_anthropic import ChatAnthropic
@@ -16,16 +17,16 @@ from weatherwise.tools.xweather_mcp import get_xweather_tools
 
 logger = get_logger(__name__)
 
-FETCHER_SYSTEM_PROMPT = """You are a weather data fetcher. Your job is to use the available Xweather tools to get the requested weather information for a specific location.
+FETCHER_SYSTEM_PROMPT = """You are a weather data fetcher. Today's date is {today_date}.
+
+Your job is to use the available tools to get the requested weather information.
 
 Rules:
-- Call the most appropriate tool for the request
-- For basic current weather, use xweather_get_current_weather
-- For forecasts, use xweather_get_forecast_weather
-- For air quality, use xweather_get_current_airquality
-- For alerts, use xweather_get_current_active_weather_alerts
-- Return the raw data you receive — do not interpret or summarize it
-- If a tool call fails, report the error clearly"""
+- Read the descriptions of all available tools and pick the most appropriate one(s) for the request
+- You may call multiple tools if the request requires different types of data
+- When dates are mentioned, use them exactly. When no dates are given and the query is about current conditions, use today's date ({today_date})
+- If a tool call fails, try an alternative tool that could provide similar information
+- Return the raw data you receive — do not interpret or summarize it"""
 
 
 @llm_retry(max_attempts=3)
@@ -38,10 +39,12 @@ async def _invoke_fetch_agent(tools: list, prompt: str) -> dict:
         temperature=0,
         timeout=45.0,
     )
+    today = datetime.now().strftime("%Y-%m-%d")
+    system_prompt = FETCHER_SYSTEM_PROMPT.format(today_date=today)
     agent = create_agent(llm, tools)
     return await agent.ainvoke(
         {"messages": [
-            SystemMessage(content=FETCHER_SYSTEM_PROMPT),
+            SystemMessage(content=system_prompt),
             HumanMessage(content=prompt),
         ]}
     )
@@ -67,7 +70,7 @@ async def fetcher_agent(state: FetchPayload) -> dict[str, Any]:
         if query:
             prompt = f"{query} for {location}" if location else query
         else:
-            prompt = f"Get current weather conditions for {location}"
+            prompt = f"Get weather information for {location}"
 
         result = await _invoke_fetch_agent(tools, prompt)
 
@@ -86,9 +89,13 @@ async def fetcher_agent(state: FetchPayload) -> dict[str, Any]:
             f"Weather data unavailable for {location}: {type(e).__name__}: {e}"
         )
 
+    # Use plan_index in key to prevent data loss when multiple fetches
+    # target the same location (e.g., current + historical for Santos)
+    key = f"{location.lower().strip()}_{plan_index}"
     return {
-        "fetched_weather": {location.lower().strip(): {
+        "fetched_weather": {key: {
             "location": location,
+            "query": query,
             "raw_response": raw_response,
         }},
         "completed_indices": [plan_index],
