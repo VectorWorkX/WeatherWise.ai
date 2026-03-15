@@ -17,7 +17,7 @@ from weatherwise.state import WeatherState
 logger = get_logger(__name__)
 
 SYSTEM_PROMPT = """You are a task planner for a weather assistant.
-Given a user query, decompose it into a list of independent sub-tasks.
+Given a user query, decompose it into sub-tasks with explicit dependencies.
 
 IMPORTANT: Today's date is {today_date}. You MUST convert ALL relative dates in the user's query to absolute dates in the "query" field. For example:
 - "last 3 days" → "daily weather summary from {three_days_ago} to {today_date}"
@@ -30,52 +30,35 @@ Each task has these fields:
 - "op": one of "fetch", "research", "calculate"
 - "location": city or region name (empty string if not location-specific)
 - "query": describes WHAT data to get — the specific intent behind the request. ALWAYS include absolute dates when the query involves time. Leave empty only for simple current weather lookups.
+- "depends_on": list of task indices (0-based) that must complete before this task runs. Use [] for tasks with no dependencies. Tasks with the same dependencies will run in parallel.
 
 Rules:
 - "fetch" = get weather-related data for a location. The "query" field tells the fetcher WHAT to look for (forecast, historical data, air quality, alerts, tropical storms, hourly conditions, etc.). The fetcher has many tools and will pick the right one based on your query.
 - "research" = search the knowledge base for background info (port closures, historical events, climate science, etc.)
-- "calculate" = perform a math operation (anomalies, comparisons, unit conversions, etc.) — these DEPEND on fetched data and will run after fetch tasks complete
+- "calculate" = perform a math operation (anomalies, comparisons, unit conversions, statistics, etc.)
+- Use "depends_on" to express which tasks must finish first. The executor uses this to determine parallel execution waves automatically — tasks with satisfied dependencies run in parallel.
+- A "calculate" task that needs fetched data should list the relevant fetch task indices in "depends_on".
+- A "calculate" task that needs results from another calculation should list that calculation's index in "depends_on". It will receive those prior results.
 
-Sample Examples:
+Examples:
 
 Query: "What's the weather in Tokyo?"
-Tasks: [{{"op": "fetch", "location": "Tokyo", "query": ""}}]
+Tasks: [{{"op": "fetch", "location": "Tokyo", "query": "", "depends_on": []}}]
 
-Query: "What's the 5-day forecast for London?"
-Tasks: [{{"op": "fetch", "location": "London", "query": "5-day weather forecast starting {today_date}"}}]
-
-Query: "What was the temperature in San Jose on January 16, 2023?"
-Tasks: [{{"op": "fetch", "location": "San Jose", "query": "daily weather summary for 2023-01-16"}}]
-
-Query: "Did it rain in the last 3 days?"
-Tasks: [{{"op": "fetch", "location": "San Jose", "query": "daily weather summary from {three_days_ago} to {today_date} with precipitation data"}}]
-
-Query: "When was the last time it rained?"
-Tasks: [{{"op": "fetch", "location": "San Jose", "query": "daily weather summaries with precipitation from {thirty_days_ago} to {today_date} to find last rain event"}}]
-
-Query: "Will it rain in Seattle tomorrow?"
-Tasks: [{{"op": "fetch", "location": "Seattle", "query": "forecast for {tomorrow} with precipitation timing and rain probability"}}]
+Query: "5-day forecast for London"
+Tasks: [{{"op": "fetch", "location": "London", "query": "5-day weather forecast starting {today_date}", "depends_on": []}}]
 
 Query: "Compare weather in New York and London"
-Tasks: [{{"op": "fetch", "location": "New York", "query": ""}}, {{"op": "fetch", "location": "London", "query": ""}}]
-
-Query: "What's the air quality in Delhi and how will it change this week?"
-Tasks: [{{"op": "fetch", "location": "Delhi", "query": "current air quality"}}, {{"op": "fetch", "location": "Delhi", "query": "air quality forecast from {today_date} to {week_end}"}}]
-
-Query: "Are there any active tropical storms near Florida?"
-Tasks: [{{"op": "fetch", "location": "Florida", "query": "active tropical storms nearby"}}]
-
-Query: "Can I play tennis at 4pm in San Jose today?"
-Tasks: [{{"op": "fetch", "location": "San Jose", "query": "hourly weather conditions for {today_date} including rain probability"}}]
-
-Query: "Are there any tornado warnings in Oklahoma?"
-Tasks: [{{"op": "fetch", "location": "Oklahoma", "query": "active weather alerts and warnings"}}]
+Tasks: [{{"op": "fetch", "location": "New York", "query": "", "depends_on": []}}, {{"op": "fetch", "location": "London", "query": "", "depends_on": []}}]
 
 Query: "Is Santos port at risk of closure due to wind? How does current wind compare to historical average?"
-Tasks: [{{"op": "fetch", "location": "Santos", "query": ""}}, {{"op": "fetch", "location": "Santos", "query": "historical daily weather summaries for wind data"}}, {{"op": "research", "query": "Santos port wind closure thresholds", "location": ""}}, {{"op": "calculate", "query": "wind anomaly: compare current wind to historical average for Santos", "location": "Santos"}}]
+Tasks: [{{"op": "fetch", "location": "Santos", "query": "", "depends_on": []}}, {{"op": "fetch", "location": "Santos", "query": "historical daily weather summaries for wind data from {thirty_days_ago} to {today_date}", "depends_on": []}}, {{"op": "research", "query": "Santos port wind closure thresholds", "location": "", "depends_on": []}}, {{"op": "calculate", "query": "wind anomaly: compare current wind to historical average for Santos", "location": "Santos", "depends_on": [0, 1]}}]
 
 Query: "Add the temperatures of Boston and New York and convert to Kelvin"
-Tasks: [{{"op": "fetch", "location": "Boston", "query": ""}}, {{"op": "fetch", "location": "New York", "query": ""}}, {{"op": "calculate", "query": "add temperatures of Boston and New York, convert sum to Kelvin", "location": ""}}]"""
+Tasks: [{{"op": "fetch", "location": "Boston", "query": "", "depends_on": []}}, {{"op": "fetch", "location": "New York", "query": "", "depends_on": []}}, {{"op": "calculate", "query": "add temperatures of Boston and New York, convert sum to Kelvin", "location": "", "depends_on": [0, 1]}}]
+
+Query: "Compare temperature deviation from mean for Delhi vs San Jose over the last month"
+Tasks: [{{"op": "fetch", "location": "Delhi", "query": "daily weather summary from {thirty_days_ago} to {today_date} with temperature data", "depends_on": []}}, {{"op": "fetch", "location": "San Jose", "query": "daily weather summary from {thirty_days_ago} to {today_date} with temperature data", "depends_on": []}}, {{"op": "calculate", "location": "Delhi", "query": "calculate mean temperature and standard deviation for Delhi", "depends_on": [0]}}, {{"op": "calculate", "location": "San Jose", "query": "calculate mean temperature and standard deviation for San Jose", "depends_on": [1]}}, {{"op": "calculate", "location": "", "query": "compare temperature deviations: which city (Delhi or San Jose) has greater deviation from its mean", "depends_on": [2, 3]}}]"""
 
 
 class PlanTask(BaseModel):
@@ -84,6 +67,10 @@ class PlanTask(BaseModel):
     op: Literal["fetch", "research", "calculate"]
     location: str = ""
     query: str = ""
+    depends_on: list[int] = Field(
+        default_factory=list,
+        description="Indices (0-based) of tasks that must complete before this one runs.",
+    )
 
 
 class PlanOutput(BaseModel):
@@ -92,19 +79,29 @@ class PlanOutput(BaseModel):
     tasks: list[PlanTask] = Field(min_length=1)
 
 
-async def planner(state: WeatherState) -> dict[str, Any]:
-    """Decompose the user query into a plan of independent sub-tasks."""
-    logger.info("planner_start")
+# Cached LLM instance — avoids re-creating HTTP clients on every call
+_planner_llm: ChatAnthropic | None = None
 
-    try:
-        llm = ChatAnthropic(
+
+def _get_planner_llm() -> ChatAnthropic:
+    global _planner_llm
+    if _planner_llm is None:
+        _planner_llm = ChatAnthropic(
             model="claude-haiku-4-5-20251001",
             api_key=os.environ.get("ANTHROPIC_API_KEY"),
             max_tokens=500,
             temperature=0,
             timeout=30.0,
         )
-        structured_llm = llm.with_structured_output(PlanOutput)
+    return _planner_llm
+
+
+async def planner(state: WeatherState) -> dict[str, Any]:
+    """Decompose the user query into a plan of independent sub-tasks."""
+    logger.info("planner_start")
+
+    try:
+        structured_llm = _get_planner_llm().with_structured_output(PlanOutput)
 
         # Resolve date placeholders so the LLM has absolute dates
         from datetime import timedelta
@@ -116,8 +113,8 @@ async def planner(state: WeatherState) -> dict[str, Any]:
             "tomorrow": (now + timedelta(days=1)).strftime("%Y-%m-%d"),
             "three_days_ago": (now - timedelta(days=3)).strftime("%Y-%m-%d"),
             "thirty_days_ago": (now - timedelta(days=30)).strftime("%Y-%m-%d"),
-            "week_start": now.strftime("%Y-%m-%d"),
-            "week_end": (now + timedelta(days=7)).strftime("%Y-%m-%d"),
+            "week_start": (now - timedelta(days=now.weekday())).strftime("%Y-%m-%d"),
+            "week_end": (now - timedelta(days=now.weekday()) + timedelta(days=6)).strftime("%Y-%m-%d"),
         }
         resolved_prompt = SYSTEM_PROMPT.format(**date_values)
 
@@ -127,7 +124,7 @@ async def planner(state: WeatherState) -> dict[str, Any]:
                 [SystemMessage(content=[
                     {"type": "text", "text": resolved_prompt,
                      "cache_control": {"type": "ephemeral"}},
-                ])] + list(state["messages"])
+                ])] + list(state["messages"][-10:])
             )
 
         result = await _plan()

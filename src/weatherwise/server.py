@@ -17,6 +17,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 
 from weatherwise.graph import build_graph
 from weatherwise.logging import setup_logging, get_logger
+from weatherwise.tools.xweather_mcp import get_xweather_tools
 from weatherwise.tracing import setup_tracing
 
 load_dotenv()
@@ -30,11 +31,15 @@ _graph = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Create the graph with the appropriate checkpointer.
+    """Create the graph and pre-warm external caches.
 
     For Redis, AsyncRedisSaver must be created inside an async context
     (its __init__ calls asyncio.get_running_loop()). The lifespan context
     manager is the correct place for this in FastAPI.
+
+    Pre-warms the Xweather MCP tool cache so the first user query doesn't
+    pay the ~2-3s schema negotiation cost. The cache lives in the xweather_mcp
+    module with a 5-minute TTL — subsequent fetcher calls hit it directly.
     """
     global _graph
     mode = os.environ.get("CHECKPOINTER_MODE", "memory")
@@ -50,11 +55,27 @@ async def lifespan(app: FastAPI):
         ) as saver:
             _graph = build_graph(checkpointer_instance=saver)
             logger.info("graph_ready", checkpointer="redis")
+            await _prewarm_caches()
             yield
     else:
         _graph = build_graph(checkpointer=mode)
         logger.info("graph_ready", checkpointer=mode)
+        await _prewarm_caches()
         yield
+
+
+async def _prewarm_caches() -> None:
+    """Pre-warm external tool caches at startup.
+
+    Called during lifespan before the server accepts requests.
+    Failures are logged but do not block startup — the fetcher's
+    own retry logic will handle MCP negotiation on first use.
+    """
+    try:
+        tools = await get_xweather_tools()
+        logger.info("mcp_cache_prewarmed", tool_count=len(tools))
+    except Exception as e:
+        logger.warning("mcp_cache_prewarm_failed", error=str(e))
 
 
 app = FastAPI(title="WeatherWise.ai", version="0.2.0", lifespan=lifespan)
@@ -202,12 +223,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
 
             # Intent label mapping for the frontend
             intent_labels = {
-                "real_time": "Real-Time Forecast",
-                "comparative": "Location Comparison",
-                "lifestyle": "Lifestyle Advisory",
-                "safety": "Safety & Alerts",
-                "explanation": "Atmospheric Science",
-                "math": "Weather Math",
+                "weather": "Weather Analysis",
                 "greeting": "Greeting",
                 "off_topic": "Off-Topic",
             }

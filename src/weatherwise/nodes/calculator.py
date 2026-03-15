@@ -14,7 +14,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from weatherwise.logging import get_logger
 from weatherwise.state import CalcPayload
-from weatherwise.tools.math_ops import compute_expression, calculate_anomaly
+from weatherwise.tools.math_ops import compute_expression, compute_statistics, calculate_anomaly
 
 logger = get_logger(__name__)
 
@@ -27,7 +27,7 @@ Your job:
 
 Always use the tools — do NOT do mental math."""
 
-_calc_tools = [compute_expression, calculate_anomaly]
+_calc_tools = [compute_expression, compute_statistics, calculate_anomaly]
 _calc_tool_map = {t.name: t for t in _calc_tools}
 
 _calc_llm: ChatAnthropic | None = None
@@ -59,6 +59,8 @@ async def calculator_agent(state: CalcPayload) -> dict[str, Any]:
 
     logger.info("calculator_start", query=query, location=location, plan_index=plan_index)
 
+    prior_calculations = state.get("prior_calculations", [])
+
     try:
         llm = _get_calc_llm().bind_tools(_calc_tools)
 
@@ -66,12 +68,22 @@ async def calculator_agent(state: CalcPayload) -> dict[str, Any]:
         for loc, data in fetched_weather.items():
             data_summary += f"\n{loc}: {data}"
 
+        # Include prior calculation results if this task depends on earlier calcs
+        prior_context = ""
+        if prior_calculations:
+            prior_context = "\n\nPrior calculation results:\n" + "\n".join(
+                f"  - {calc}" for calc in prior_calculations
+            )
+
         messages = [
-            SystemMessage(content=CALC_SYSTEM_PROMPT),
+            SystemMessage(content=[
+                {"type": "text", "text": CALC_SYSTEM_PROMPT,
+                 "cache_control": {"type": "ephemeral"}},
+            ]),
             HumanMessage(
                 content=f"Calculation request: {query}\n"
                         f"Location: {location}\n"
-                        f"Available weather data:{data_summary}"
+                        f"Available weather data:{data_summary}{prior_context}"
             ),
         ]
 

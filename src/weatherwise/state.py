@@ -84,10 +84,11 @@ class FetchPayload(TypedDict):
 
 
 class CalcPayload(TypedDict):
-    """Payload for calculator workers — includes fetched data for computation."""
+    """Payload for calculator workers — includes fetched data and prior calc results."""
 
     plan_index: int
     op: str  # "calculate"
     location: str
     query: str
     fetched_weather: dict[str, Any]  # all weather data collected so far
+    prior_calculations: list[str]  # results from earlier calculate tasks this one depends on

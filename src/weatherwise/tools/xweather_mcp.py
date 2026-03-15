@@ -63,11 +63,29 @@ async def get_xweather_tools() -> list:
 
         logger.info("xweather_tools_loading")
         config = get_xweather_mcp_config()
-        client = MultiServerMCPClient(config)
-        _tool_cache = await client.get_tools()
-        _tool_cache_time = time.monotonic()
-        logger.info("xweather_tools_cached", tool_count=len(_tool_cache))
-        return _tool_cache
+
+        # Retry MCP connection up to 3 times with backoff.
+        # Xweather's MCP server occasionally returns transient errors
+        # (e.g., application/octet-stream instead of JSON).
+        last_err: Exception | None = None
+        for attempt in range(3):
+            try:
+                client = MultiServerMCPClient(config)
+                _tool_cache = await client.get_tools()
+                _tool_cache_time = time.monotonic()
+                logger.info("xweather_tools_cached", tool_count=len(_tool_cache))
+                return _tool_cache
+            except Exception as e:
+                last_err = e
+                logger.warning(
+                    "xweather_tools_retry",
+                    attempt=attempt + 1,
+                    error=str(e),
+                )
+                if attempt < 2:
+                    await asyncio.sleep(1.5 * (attempt + 1))
+
+        raise last_err  # type: ignore[misc]
 
 
 def invalidate_tool_cache() -> None:

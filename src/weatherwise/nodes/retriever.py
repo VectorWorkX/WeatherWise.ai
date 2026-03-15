@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from weatherwise.logging import get_logger
@@ -23,7 +24,9 @@ async def retriever_agent(state: FetchPayload) -> dict[str, Any]:
     logger.info("retriever_start", query=query, plan_index=plan_index)
 
     try:
-        results = search_knowledge_base(query)
+        # Run sync I/O (OpenAI embedding + Pinecone query) in a thread
+        # to avoid blocking the event loop during parallel fan-out
+        results = await asyncio.to_thread(search_knowledge_base, query)
         logger.info("retriever_success", result_count=len(results))
     except Exception as e:
         logger.error("retriever_failed", error=str(e))

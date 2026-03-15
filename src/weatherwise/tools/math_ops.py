@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import ast
+import math
 import operator
+import statistics
 
 from langchain_core.tools import tool
 
@@ -57,6 +59,38 @@ def calculate_anomaly(
     return (
         f"{location.title()} {field} anomaly: {current_value} vs "
         f"historical avg {historical_value} = {anomaly:+.2f} ({abs(anomaly)} {direction} normal)"
+    )
+
+
+@tool
+def compute_statistics(values: list[float], label: str = "") -> str:
+    """Compute statistical summary for a list of numeric values.
+
+    Use this for calculating mean, standard deviation, min, max, and range
+    over a series of weather measurements (e.g., daily temperatures over a month).
+
+    Args:
+        values: List of numeric values, e.g. [17.37, 18.21, 19.23, 20.34, ...].
+                Must contain at least 2 values.
+        label: Optional label for the output, e.g. "Delhi avg temperature (°C)".
+
+    Returns:
+        Formatted statistics string with mean, std dev, min, max, count, and range.
+    """
+    if len(values) < 2:
+        return f"Error: need at least 2 values, got {len(values)}"
+
+    mean = statistics.mean(values)
+    stdev = statistics.stdev(values)
+    min_val = min(values)
+    max_val = max(values)
+    count = len(values)
+    val_range = max_val - min_val
+
+    prefix = f"{label}: " if label else ""
+    return (
+        f"{prefix}count={count}, mean={mean:.2f}, std_dev={stdev:.2f}, "
+        f"min={min_val:.2f}, max={max_val:.2f}, range={val_range:.2f}"
     )
 
 
