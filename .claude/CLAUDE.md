@@ -11,7 +11,7 @@ WeatherWise.ai is a stateful multi-agent weather system using a Planner-Executor
 - **Weather Data:** Xweather MCP Server (`https://mcp.api.xweather.com/mcp`) via `langchain-mcp-adapters`
 - **RAG:** Pinecone (serverless, free tier) + OpenAI `text-embedding-3-small` (1536 dims), summary-to-source multi-vector retrieval, parent content in vector metadata
 - **Document Parsing:** `unstructured` (`hi_res` strategy) for PDF text, tables, images — ingestion only
-- **Tools:** Xweather MCP tools (real-time), Pinecone RAG retrieval, math operations
+- **Tools:** Xweather MCP tools (real-time), Pinecone RAG retrieval, sandboxed Python calculator (math + statistics)
 - **Checkpointing:** MemorySaver (production + dev), AsyncSqliteSaver (local persistent). Redis planned via Redis Cloud free tier (GCP Memorystore lacks RediSearch module needed by langgraph-checkpoint-redis v0.3+)
 - **Prompt Caching:** Anthropic native prompt caching via `cache_control` content blocks (GA, no beta header)
 - **Validation:** Pydantic models for structured output
@@ -22,8 +22,8 @@ WeatherWise.ai is a stateful multi-agent weather system using a Planner-Executor
 - **State:** Single `WeatherState` TypedDict with Annotated reducers
 - **Fan-out:** Executor returns `Send` objects to spawn parallel worker nodes
 - **Fan-in:** Workers loop back to executor; reducers merge parallel writes
-- **Two-phase execution:** Phase 1 = fetch + research (parallel), Phase 2 = calculate (has fetched data)
-- **Graph flow:** START -> supervisor -> planner -> executor -> [phase 1 workers] -> executor -> [phase 2 workers] -> executor -> synthesizer -> END
+- **Dependency-aware execution:** Planner assigns `depends_on` indices to each task. Executor dispatches tasks whose dependencies are satisfied, producing dynamic parallel waves. No hardcoded phase ordering.
+- **Graph flow:** START -> supervisor -> planner -> executor -> [ready workers] -> executor -> [next wave] -> ... -> executor -> synthesizer -> END
 - **Async-native:** All nodes are `async def`, graph uses `ainvoke()`/`astream()`
 
 ## Key Files
@@ -32,7 +32,7 @@ WeatherWise.ai is a stateful multi-agent weather system using a Planner-Executor
 - `src/weatherwise/nodes/` — Node implementations (supervisor, planner, executor, fetcher, retriever, calculator, synthesizer)
 - `src/weatherwise/tools/xweather_mcp.py` — Xweather MCP client config
 - `src/weatherwise/tools/vector_search.py` — Pinecone retrieval (runtime, lightweight)
-- `src/weatherwise/tools/` — Tool functions (MCP bridge, RAG retrieval, math)
+- `src/weatherwise/tools/math_ops.py` — Calculator tools: `compute_expression` (arithmetic) + `run_calculation` (sandboxed Python with math/statistics)
 - `src/weatherwise/main.py` — Entry point with checkpointing
 - `scripts/build_knowledge.py` — Offline RAG ingestion pipeline (PDF/image -> Pinecone)
 - `scripts/verify_retrieval.py` — RAG retrieval test harness

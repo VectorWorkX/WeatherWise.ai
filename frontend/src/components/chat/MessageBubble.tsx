@@ -57,6 +57,14 @@ export default function MessageBubble({ message, onApproval }: Props) {
           <div>
             {message.isStreaming && !message.content ? (
               <TypingIndicator />
+            ) : message.isStreaming ? (
+              /* Raw text during streaming — avoids ReactMarkdown re-parsing
+                 on every token. Markdown is applied once streaming completes. */
+              <div className="message-markdown text-[15px]">
+                <pre className="whitespace-pre-wrap font-[inherit] text-inherit leading-relaxed m-0 p-0 bg-transparent border-0">
+                  {message.content}
+                </pre>
+              </div>
             ) : (
               <div className="message-markdown text-[15px]">
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>

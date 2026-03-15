@@ -229,6 +229,12 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             }
 
             try:
+                # Token batching: accumulate tokens and flush in chunks
+                # to reduce WebSocket messages and React re-renders.
+                # Instead of 500+ individual sends, this produces ~30-50.
+                token_buffer = ""
+                _TOKEN_FLUSH_SIZE = 30  # flush every ~30 characters
+
                 async for event in _graph.astream_events(
                     {"messages": [HumanMessage(content=content)]},
                     config=run_config,
@@ -284,11 +290,22 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                                     continue
                                 text = _extract_text(chunk.content)
                                 if text:
+                                    token_buffer += text
                                     full_response += text
-                                    await websocket.send_json({
-                                        "type": "token",
-                                        "content": text,
-                                    })
+                                    if len(token_buffer) >= _TOKEN_FLUSH_SIZE:
+                                        await websocket.send_json({
+                                            "type": "token",
+                                            "content": token_buffer,
+                                        })
+                                        token_buffer = ""
+
+                # Flush remaining buffered tokens
+                if token_buffer:
+                    await websocket.send_json({
+                        "type": "token",
+                        "content": token_buffer,
+                    })
+                    token_buffer = ""
 
                 # Fallback: if streaming captured no tokens, extract from state
                 if not full_response:
