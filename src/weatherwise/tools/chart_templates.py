@@ -178,7 +178,12 @@ def validate_shape(chart_spec: dict) -> dict:
     # Check data key requirements (pie, donut, gauge)
     if "needs_data_keys" in reqs:
         data = chart_spec.get("data", [])
-        if data and isinstance(data[0], dict):
+        if not data:
+            # Empty data for types that require it — downgrade
+            logger.warning("shape_downgrade", from_type=chart_type, to_type="bar",
+                           reason="empty data array")
+            chart_spec = {**chart_spec, "type": "bar"}
+        elif isinstance(data[0], dict):
             required_keys = reqs["needs_data_keys"]
             if not all(k in data[0] for k in required_keys):
                 logger.warning("shape_downgrade", from_type=chart_type, to_type="bar",
@@ -343,8 +348,9 @@ def _merge_cartesian(option: dict, spec: dict, mapping: dict) -> None:
 
         if i < len(series_paths):
             set_nested_value(option, series_paths[i], values)
-            # Set series name
-            name_path = series_paths[i].replace(".data", ".name")
+            # Set series name — replace only the LAST .data segment
+            name_path = series_paths[i].rsplit(".data", 1)
+            name_path = ".name".join(name_path) if len(name_path) == 2 else series_paths[i]
             try:
                 set_nested_value(option, name_path, field)
             except (KeyError, IndexError):
@@ -470,12 +476,15 @@ def _merge_heatmap(option: dict, spec: dict, mapping: dict) -> None:
             y_axis[0]["data"] = y_labels
 
     # Transform data to [x_index, y_index, value] format
-    heatmap_data = [
-        [x_labels.index(d.get(x_field, "")),
-         y_labels.index(d.get(y_field, "")),
-         d.get(value_field, 0)]
-        for d in data
-    ]
+    # Use dict lookups instead of index() to avoid ValueError on missing labels
+    x_lookup = {label: i for i, label in enumerate(x_labels)}
+    y_lookup = {label: i for i, label in enumerate(y_labels)}
+    heatmap_data = []
+    for d in data:
+        x_val = d.get(x_field, "")
+        y_val = d.get(y_field, "")
+        if x_val in x_lookup and y_val in y_lookup:
+            heatmap_data.append([x_lookup[x_val], y_lookup[y_val], d.get(value_field, 0)])
 
     series_paths = mapping.get("series_paths", ["series[0].data"])
     if series_paths:

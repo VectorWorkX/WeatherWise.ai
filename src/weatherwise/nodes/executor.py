@@ -206,6 +206,15 @@ def route_from_executor(
                     "prior_calculations": list(state.get("calculations", [])),
                 }
                 forced_sends.append(Send("calculator_agent", calc_payload))
+            elif op == "visualize":
+                viz_payload = {
+                    "plan_index": i,
+                    "op": op,
+                    "query": task.get("query", ""),
+                    "fetched_weather": state.get("fetched_weather", {}),
+                    "calculations": list(state.get("calculations", [])),
+                }
+                forced_sends.append(Send("visualizer_agent", viz_payload))
 
         return forced_sends
 
