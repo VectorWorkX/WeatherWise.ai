@@ -142,9 +142,9 @@ def _get_viz_llm() -> ChatAnthropic:
         _viz_llm = ChatAnthropic(
             model="claude-haiku-4-5-20251001",
             api_key=os.environ.get("ANTHROPIC_API_KEY"),
-            max_tokens=3000,
+            max_tokens=8000,
             temperature=0.2,
-            timeout=60.0,
+            timeout=90.0,
         )
     return _viz_llm
 
