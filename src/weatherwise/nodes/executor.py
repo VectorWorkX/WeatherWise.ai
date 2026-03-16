@@ -26,7 +26,7 @@ logger = get_logger(__name__)
 
 # Safety limit: if executor is called more times than this, force synthesize
 MAX_EXECUTOR_ITERATIONS = 15
-_VALID_OPS = {"fetch", "research", "calculate"}
+_VALID_OPS = {"fetch", "research", "calculate", "visualize"}
 
 
 async def executor(state: WeatherState) -> dict[str, Any]:
@@ -48,15 +48,15 @@ def _sanitize_depends_on(
     - Out-of-bounds indices (>= plan length or negative)
     - Non-integer values (defensive, should be caught by Pydantic)
 
-    Falls back to implicit dependencies for calculate tasks without depends_on.
+    Falls back to implicit dependencies for calculate/visualize tasks without depends_on.
     """
     if depends_on is None:
-        if op == "calculate":
-            # Safety fallback: calculate tasks without explicit depends_on
-            # implicitly depend on all fetch/research tasks that precede them.
+        if op in ("calculate", "visualize"):
+            # Safety fallback: calculate/visualize tasks without explicit depends_on
+            # implicitly depend on all preceding tasks.
             return [
                 j for j, t in enumerate(plan)
-                if j < task_index and t.get("op") in ("fetch", "research")
+                if j < task_index and t.get("op") in ("fetch", "research", "calculate")
             ]
         return []
 
@@ -156,6 +156,15 @@ def route_from_executor(
                 "prior_calculations": list(state.get("calculations", [])),
             }
             ready_sends.append(Send("calculator_agent", calc_payload))
+        elif op == "visualize":
+            viz_payload = {
+                "plan_index": i,
+                "op": op,
+                "query": task.get("query", ""),
+                "fetched_weather": state.get("fetched_weather", {}),
+                "calculations": list(state.get("calculations", [])),
+            }
+            ready_sends.append(Send("visualizer_agent", viz_payload))
 
     logger.info(
         "executor_routing",

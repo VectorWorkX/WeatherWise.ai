@@ -322,6 +322,19 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                     "full_content": full_response,
                 })
 
+                # Send visual report if one was generated
+                try:
+                    graph_state = await _graph.aget_state(run_config)
+                    if graph_state.values:
+                        viz = graph_state.values.get("visual_report", {})
+                        if viz and viz.get("sections"):
+                            await websocket.send_json({
+                                "type": "visual_report",
+                                "data": _safe_json(viz),
+                            })
+                except Exception as ve:
+                    logger.warning("visual_report_send_failed", error=str(ve))
+
             except Exception as e:
                 logger.error("ws_error", error=str(e), thread_id=session_id)
                 await websocket.send_json({"type": "error", "message": str(e)})

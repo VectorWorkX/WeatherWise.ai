@@ -16,6 +16,7 @@ from weatherwise.nodes.fetcher import fetcher_agent
 from weatherwise.nodes.retriever import retriever_agent
 from weatherwise.nodes.calculator import calculator_agent
 from weatherwise.nodes.synthesizer import synthesizer
+from weatherwise.nodes.visualizer import visualizer_agent
 
 # Maximum graph recursion steps (prevents infinite loops)
 RECURSION_LIMIT = 25
@@ -81,6 +82,7 @@ def build_graph(
     graph.add_node("retriever_agent", retriever_agent)
     graph.add_node("calculator_agent", calculator_agent)
     graph.add_node("synthesizer", synthesizer)
+    graph.add_node("visualizer_agent", visualizer_agent)
 
     # -- Wire edges --
 
@@ -101,13 +103,14 @@ def build_graph(
     graph.add_conditional_edges(
         "executor",
         route_from_executor,
-        ["fetcher_agent", "retriever_agent", "calculator_agent", "synthesizer"],
+        ["fetcher_agent", "retriever_agent", "calculator_agent", "visualizer_agent", "synthesizer"],
     )
 
     # 5. Fan-in: all workers loop back to executor (not synthesizer)
     graph.add_edge("fetcher_agent", "executor")
     graph.add_edge("retriever_agent", "executor")
     graph.add_edge("calculator_agent", "executor")
+    graph.add_edge("visualizer_agent", "executor")
 
     # 6. synthesizer -> END
     graph.add_edge("synthesizer", END)

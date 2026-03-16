@@ -63,6 +63,11 @@ class WeatherState(TypedDict):
     # Planner sends [] to reset for new query.
     calculations: Annotated[list[str], reset_or_add]
 
+    # Visual report — structured chart data from the visualizer agent.
+    # Contains title, metrics, sections (with ECharts options), and insights.
+    # Planner sends {} to reset for new query.
+    visual_report: Annotated[dict[str, Any], merge_dicts]
+
     # Routing decision set by the supervisor.
     # "clear" = proceed to planner, "ambiguous" = ask user for clarification.
     routing: Literal["clear", "ambiguous"]
@@ -92,3 +97,13 @@ class CalcPayload(TypedDict):
     query: str
     fetched_weather: dict[str, Any]  # all weather data collected so far
     prior_calculations: list[str]  # results from earlier calculate tasks this one depends on
+
+
+class VisualizePayload(TypedDict):
+    """Payload for the visualizer agent — includes all gathered data for charting."""
+
+    plan_index: int
+    op: str  # "visualize"
+    query: str
+    fetched_weather: dict[str, Any]
+    calculations: list[str]

@@ -27,7 +27,7 @@ IMPORTANT: Today's date is {today_date}. You MUST convert ALL relative dates in 
 - "last time it rained" → "daily weather summaries with precipitation for the past 30 days from {thirty_days_ago} to {today_date}"
 
 Each task has these fields:
-- "op": one of "fetch", "research", "calculate"
+- "op": one of "fetch", "research", "calculate", "visualize"
 - "location": city or region name (empty string if not location-specific)
 - "query": describes WHAT data to get — the specific intent behind the request. ALWAYS include absolute dates when the query involves time. Leave empty only for simple current weather lookups.
 - "depends_on": list of task indices (0-based) that must complete before this task runs. Use [] for tasks with no dependencies. Tasks with the same dependencies will run in parallel.
@@ -36,6 +36,7 @@ Rules:
 - "fetch" = get weather-related data for a location. The "query" field tells the fetcher WHAT to look for (forecast, historical data, air quality, alerts, tropical storms, hourly conditions, etc.). The fetcher has many tools and will pick the right one based on your query.
 - "research" = search the knowledge base for background info (port closures, historical events, climate science, etc.)
 - "calculate" = perform a math operation (anomalies, comparisons, unit conversions, statistics, etc.)
+- "visualize" = produce a visual report with charts and insights. Only include when the user EXPLICITLY requests visualization (chart, graph, visual report, plot, diagram, etc.) or confirms a visualization suggestion. Always pair with fetch tasks via depends_on — the visualizer needs raw structured data. The "query" field should describe what to visualize.
 - Use "depends_on" to express which tasks must finish first. The executor uses this to determine parallel execution waves automatically — tasks with satisfied dependencies run in parallel.
 - A "calculate" task that needs fetched data should list the relevant fetch task indices in "depends_on".
 - A "calculate" task that needs results from another calculation should list that calculation's index in "depends_on". It will receive those prior results.
@@ -58,13 +59,19 @@ Query: "Add the temperatures of Boston and New York and convert to Kelvin"
 Tasks: [{{"op": "fetch", "location": "Boston", "query": "", "depends_on": []}}, {{"op": "fetch", "location": "New York", "query": "", "depends_on": []}}, {{"op": "calculate", "query": "add temperatures of Boston and New York, convert sum to Kelvin", "location": "", "depends_on": [0, 1]}}]
 
 Query: "Compare temperature deviation from mean for Delhi vs San Jose over the last month"
-Tasks: [{{"op": "fetch", "location": "Delhi", "query": "daily weather summary from {thirty_days_ago} to {today_date} with temperature data", "depends_on": []}}, {{"op": "fetch", "location": "San Jose", "query": "daily weather summary from {thirty_days_ago} to {today_date} with temperature data", "depends_on": []}}, {{"op": "calculate", "location": "Delhi", "query": "calculate mean temperature and standard deviation for Delhi", "depends_on": [0]}}, {{"op": "calculate", "location": "San Jose", "query": "calculate mean temperature and standard deviation for San Jose", "depends_on": [1]}}, {{"op": "calculate", "location": "", "query": "compare temperature deviations: which city (Delhi or San Jose) has greater deviation from its mean", "depends_on": [2, 3]}}]"""
+Tasks: [{{"op": "fetch", "location": "Delhi", "query": "daily weather summary from {thirty_days_ago} to {today_date} with temperature data", "depends_on": []}}, {{"op": "fetch", "location": "San Jose", "query": "daily weather summary from {thirty_days_ago} to {today_date} with temperature data", "depends_on": []}}, {{"op": "calculate", "location": "Delhi", "query": "calculate mean temperature and standard deviation for Delhi", "depends_on": [0]}}, {{"op": "calculate", "location": "San Jose", "query": "calculate mean temperature and standard deviation for San Jose", "depends_on": [1]}}, {{"op": "calculate", "location": "", "query": "compare temperature deviations: which city (Delhi or San Jose) has greater deviation from its mean", "depends_on": [2, 3]}}]
+
+Query: "Generate a visual report of lightning strikes across the 5 largest Minneapolis suburbs"
+Tasks: [{{"op": "fetch", "location": "Brooklyn Park", "query": "historical lightning strikes for the past month", "depends_on": []}}, {{"op": "fetch", "location": "Plymouth", "query": "historical lightning strikes for the past month", "depends_on": []}}, {{"op": "fetch", "location": "Maple Grove", "query": "historical lightning strikes for the past month", "depends_on": []}}, {{"op": "fetch", "location": "Woodbury", "query": "historical lightning strikes for the past month", "depends_on": []}}, {{"op": "fetch", "location": "Blaine", "query": "historical lightning strikes for the past month", "depends_on": []}}, {{"op": "visualize", "location": "", "query": "visual report of cloud-to-ground lightning strike counts across 5 Minneapolis suburbs with comparison charts and insights", "depends_on": [0, 1, 2, 3, 4]}}]
+
+Query: "Compare Delhi and San Jose temperatures and show me a chart"
+Tasks: [{{"op": "fetch", "location": "Delhi", "query": "", "depends_on": []}}, {{"op": "fetch", "location": "San Jose", "query": "", "depends_on": []}}, {{"op": "visualize", "location": "", "query": "visual comparison of current weather conditions between Delhi and San Jose with temperature and key metrics", "depends_on": [0, 1]}}]"""
 
 
 class PlanTask(BaseModel):
     """A single sub-task in the execution plan."""
 
-    op: Literal["fetch", "research", "calculate"]
+    op: Literal["fetch", "research", "calculate", "visualize"]
     location: str = ""
     query: str = ""
     depends_on: list[int] = Field(
@@ -148,4 +155,5 @@ async def planner(state: WeatherState) -> dict[str, Any]:
         "fetched_weather": {},
         "retrieved_knowledge": [],
         "calculations": [],
+        "visual_report": {},
     }

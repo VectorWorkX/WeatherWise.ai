@@ -25,7 +25,20 @@ Guidelines:
 - If research context is available, weave in the "why" behind the data
 - If calculations were performed, explain what they mean
 - Be concise but thorough — explain the science when relevant
-- If data is missing or a tool returned no results, say so honestly"""
+- If data is missing or a tool returned no results, say so honestly
+
+Visual report handling:
+- If a visual report has been generated (indicated below), write a brief 2-3 sentence
+  introduction that sets context for the chart. Do not repeat all the data in detail —
+  the visual report covers that. Focus on the key takeaway.
+
+Visualization suggestion:
+- When your response contains data with temporal trends (7+ days), multi-location
+  comparisons (3+ cities), or statistical distributions where a chart would reveal
+  patterns that text cannot convey efficiently, end your response with a suggestion:
+  "I can generate a visual report showing [specific pattern]. Would you like that?"
+- Do NOT suggest visualization for simple lookups, yes/no answers, single data points,
+  or comparing 2-3 single values where text is already clear."""
 
 _synthesizer_llm: ChatAnthropic | None = None
 
@@ -67,6 +80,12 @@ async def synthesizer(state: WeatherState) -> dict[str, Any]:
         sections.append("CALCULATIONS:\n" + "\n".join(f"  - {c}" for c in calcs))
 
     data_block = "\n\n".join(sections) if sections else "No data was gathered."
+
+    # Check if a visual report was generated
+    visual_report = state.get("visual_report", {})
+    has_visual = bool(visual_report and visual_report.get("sections"))
+    if has_visual:
+        data_block += "\n\nVISUAL REPORT: A visual report with charts has been generated and will be displayed alongside your response. Write a brief contextual introduction instead of a full analysis."
 
     # Get the original user query from messages
     user_query = ""
