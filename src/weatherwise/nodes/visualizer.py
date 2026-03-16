@@ -25,7 +25,7 @@ from pydantic import BaseModel, Field
 from weatherwise.logging import get_logger
 from weatherwise.retry import llm_retry
 from weatherwise.state import VisualizePayload
-from weatherwise.tools.chart_templates import build_echarts_option
+from weatherwise.tools.chart_templates import build_echarts_option, discover_chart_templates
 from weatherwise.tools.math_ops import run_calculation
 
 logger = get_logger(__name__)
@@ -89,46 +89,70 @@ class VisualReport(BaseModel):
 VISUALIZER_SYSTEM_PROMPT = """You are a weather data visualization analyst. Your job is to create
 insightful visual reports that tell a complete story about the data.
 
-ANALYSIS PROCESS (think through this before generating output):
-1. What is the shape of this data? (time-series, comparison, distribution, single metric)
-2. What patterns, trends, or anomalies exist in the data?
-3. What chart type would BEST reveal these patterns to a human viewer?
-4. How many chart sections does this story need? Use ONE for simple data,
-   multiple ONLY if different aspects need different chart types.
-5. What additional context would make the chart more insightful?
-   (reference lines for means/thresholds, comparisons the user didn't ask for,
-    trend direction, severity assessment)
-6. What are the key takeaways a weather analyst would highlight?
+WORKFLOW (follow this order strictly):
 
-CHART TYPE SELECTION — choose based on what the data LOOKS like:
-- "line": data changes over time (daily temperatures, forecasts, trends)
-- "bar": comparing values across categories (cities, days, metrics)
-- "donut": parts of a whole (distribution percentages, proportions)
-- "radar": comparing multiple metrics for entities (temp + humidity + wind for 2 cities)
-- "gauge": single current reading against a range (AQI, temperature, humidity)
-- "scatter": relationship between two variables (temperature vs humidity correlation)
-- "heatmap": intensity across two dimensions (hourly temperatures by day of week)
+1. ANALYZE: Study the weather data. Identify what patterns exist (trends, comparisons,
+   distributions, anomalies). Decide what chart types would best reveal these patterns
+   and how many sections the story needs. Use ONE chart for simple data, multiple ONLY
+   if different aspects need different chart types.
 
-EXCEPTION: If the user EXPLICITLY requests a specific chart type (e.g., "show me a pie chart",
-"generate a line graph"), use that type regardless of your analysis.
+2. DISCOVER TEMPLATES: Call discover_chart_templates with your visual intent for each
+   chart. You can search for multiple templates in ONE call (bundle search).
+   Read the returned data_mapping carefully — it tells you EXACTLY:
+   - WHERE data goes (series_paths, x_axis_path, category_path)
+   - HOW MANY series the template supports
+   - What structure the template expects
+   You MUST conform your data output to match these mapping requirements.
 
-SEARCH HINT: For each chart, write a search_hint that describes the VISUAL LOOK you want,
-NOT the data. Example: "smooth gradient area chart with markPoints highlighting max and min
-values, warm color palette" — this helps find the best-looking template.
+3. EXTRACT DATA: Use run_calculation to programmatically extract numeric values from
+   the weather data. NEVER manually list values from tables — write code that parses
+   the table to ensure no values are missed.
 
-DATA EXTRACTION: You will receive raw weather data that may contain markdown tables.
-Use the run_calculation tool to extract numeric values programmatically.
-NEVER manually list values from a table — write code that parses the table instead.
+4. GENERATE REPORT: Output the VisualReport with data shaped to match each template's
+   data_mapping. For each chart section, include the search_hint you used so the
+   builder can find the same template.
+
+UNIVERSAL DATA FORMATS — use these standard shapes in your chart data:
+
+For categorical/time-series data (line, bar, scatter):
+  data: [{"label": "Mar 15", "Delhi": 29.9, "San Jose": 27.7}, ...]
+  x_field: "label"
+  (y_fields will be auto-detected from numeric keys if you omit them)
+
+For single-value categories (pie, donut, gauge):
+  data: [{"label": "Sunny Days", "value": 15}, {"label": "Rainy Days", "value": 8}]
+
+For multi-dimensional profiles (radar):
+  data: [{"group": "Delhi", "metrics": {"Temp": 24, "Humidity": 55, "Wind": 12}}]
+  metrics: ["Temp", "Humidity", "Wind"]
+  max_values: [50, 100, 60]
+
+For matrix data (heatmap):
+  data: [{"row": "Monday", "column": "6am", "value": 15}]
+  x_field: "row", y_field: "column", value_field: "value"
+
+CHART SELECTION — choose based on what the data reveals:
+- "line": data changes over time (trends, forecasts)
+- "bar": comparing values across categories
+- "donut": parts of a whole (distribution)
+- "radar": comparing multiple metrics across entities (needs 3+ metrics to be meaningful)
+- "gauge": single current reading against a range
+- "scatter": relationship between two variables
+- "heatmap": intensity across two dimensions
+
+If the user explicitly requests a specific chart type, use that type.
+If the data doesn't fit the chosen chart type (e.g., only 1 metric for radar), choose
+a chart type that matches the data's actual shape.
 
 THINK BEYOND THE QUESTION:
-- If showing temperature trend, add a reference line for the period mean
-- If comparing cities, add a metric card showing which one "wins" and by how much
-- If showing AQI or severe weather data, set mood to "danger"
-- If data has different units (temp °C + rainfall mm), set dual_axis to true
-- Always include at least 3 insights that go beyond restating the numbers
-- Include every relevant detail: variable names, units, labels, date ranges
+- Add reference lines for means or thresholds when relevant
+- Highlight which entity "wins" in comparisons
+- Set mood to "danger" for severe weather / unhealthy AQI
+- Set dual_axis when comparing different units
+- Include at least 3 insights that go beyond restating the numbers
+- Include every detail: variable names, units, labels, date ranges
 
-METRICS: Highlight 3-5 key numbers as metric cards. Include the unit for each.
+METRICS: Highlight key numbers as metric cards. Include the unit for each.
 
 PRIORITY: Set priority=1 for the main chart (full width), priority=2 for supporting
 charts (displayed side-by-side in the frontend)."""
@@ -180,9 +204,9 @@ async def visualizer_agent(state: VisualizePayload) -> dict[str, Any]:
                 f"  - {c}" for c in calculations
             )
 
-        # Use LLM with tools to extract data and design the report
+        # Use LLM with tools to discover templates and extract data
         llm = _get_viz_llm()
-        _tools = [run_calculation]
+        _tools = [discover_chart_templates, run_calculation]
         llm_with_tools = llm.bind_tools(_tools)
         tool_map = {t.name: t for t in _tools}
 
@@ -194,13 +218,15 @@ async def visualizer_agent(state: VisualizePayload) -> dict[str, Any]:
             HumanMessage(
                 content=f"Create a visual report for this query: {query}\n\n"
                         f"Available weather data:{data_summary}{calc_context}\n\n"
-                        f"Analyze the data, extract values using run_calculation if needed, "
-                        f"then design the visual report."
+                        f"Follow the workflow: first call discover_chart_templates to find "
+                        f"the best visual designs for your charts, then use run_calculation "
+                        f"to extract data values, then generate the VisualReport with data "
+                        f"shaped to match each template's data_mapping requirements."
             ),
         ]
 
-        # ReAct loop — let the LLM call run_calculation for data extraction
-        max_iterations = 5
+        # ReAct loop — template discovery + data extraction + report generation
+        max_iterations = 8
         for _ in range(max_iterations):
             response = await llm_with_tools.ainvoke(messages)
             messages.append(response)

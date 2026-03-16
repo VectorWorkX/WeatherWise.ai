@@ -2,6 +2,8 @@
 
 Layer 2 (Stylist): Searches Pinecone for the best ECharts design template
     matching a visual description, with hard filtering on chart_type.
+    Exposed as a LangChain tool so the visualizer LLM can discover templates
+    BEFORE generating data (Template Injection pattern).
 Layer 3 (Builder): Validates data shape, merges data into template via
     data_mapping paths, and injects unit formatters.
 
@@ -66,6 +68,7 @@ def _get_chart_vectorstore():
             embedding=embeddings,
             pinecone_api_key=os.environ["PINECONE_API_KEY"],
             namespace="visual_templates",
+            text_key="description",
         )
     return _vectorstore_cache
 
@@ -129,12 +132,50 @@ def search_chart_template(
 
 
 def _parse_template_metadata(metadata: dict) -> dict:
-    """Parse stringified JSON fields from Pinecone metadata."""
+    """Parse stringified JSON fields from Pinecone metadata.
+
+    Normalizes data_mapping at read time — converts all paths to dot-notation
+    strings regardless of what the indexing LLM produced. This prevents
+    downstream crashes from inconsistent metadata formats.
+    """
+    raw_mapping = json.loads(metadata["data_mapping"])
+    normalized_mapping = _normalize_data_mapping(raw_mapping)
+
     return {
         "echarts_template": json.loads(metadata["echarts_template"]),
-        "data_mapping": json.loads(metadata["data_mapping"]),
+        "data_mapping": normalized_mapping,
         "visual_features": metadata.get("visual_features", []),
+        "description": metadata.get("description", ""),
     }
+
+
+def _normalize_data_mapping(mapping: dict) -> dict:
+    """Normalize all paths in a data_mapping to dot-notation strings.
+
+    Handles LLM-generated metadata inconsistencies:
+    - List paths ["series", 0, "data"] → "series[0].data"
+    - None/missing paths → None
+    - Already-correct string paths → unchanged
+    - series_paths always a list of strings
+    """
+    normalized = {}
+
+    for key in ("title_path", "x_axis_path", "y_axis_name_path", "legend_path", "category_path"):
+        normalized[key] = _normalize_path(mapping.get(key))
+
+    # series_paths must always be a list of strings
+    raw_series = mapping.get("series_paths", [])
+    if isinstance(raw_series, list):
+        normalized["series_paths"] = [
+            _normalize_path(p) for p in raw_series
+            if _normalize_path(p) is not None
+        ]
+    elif isinstance(raw_series, str):
+        normalized["series_paths"] = [raw_series]
+    else:
+        normalized["series_paths"] = []
+
+    return normalized
 
 
 def _get_baseline(chart_type: str) -> dict:
@@ -156,30 +197,144 @@ def _get_baseline(chart_type: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Shape Validator (Layer 3 - Step A)
+# Template Discovery Tool (for the Visualizer LLM's ReAct loop)
+# ---------------------------------------------------------------------------
+
+@tool
+def discover_chart_templates(queries: list[dict]) -> str:
+    """Search for chart design templates from the template library.
+
+    Call this BEFORE generating chart data. The returned data_mapping tells you
+    exactly WHERE and HOW data should be structured for each template.
+    Supports bundle search — pass multiple queries to get multiple templates in one call.
+
+    Args:
+        queries: List of search queries. Each must have:
+            - "search_hint": description of desired visual style (e.g., "smooth gradient
+              area chart for temperature trend with reference lines")
+            - "chart_type": one of line, bar, pie, donut, radar, gauge, scatter, heatmap
+
+    Returns:
+        JSON string with template info for each query, including:
+        - description: what the template looks like visually
+        - data_mapping: exact paths where data goes in the template
+          (e.g., series_paths tells you how many data series the template supports)
+        - visual_features: style tags for the template
+
+    Example:
+        queries=[
+            {"search_hint": "gradient area chart for 7-day temperature", "chart_type": "line"},
+            {"search_hint": "danger gauge for air quality", "chart_type": "gauge"}
+        ]
+    """
+    results = []
+    for q in queries:
+        hint = q.get("search_hint", "")
+        chart_type = q.get("chart_type", "bar")
+
+        template_data = search_chart_template(hint, chart_type)
+
+        # Return data_mapping + description + features (NOT the full echarts_template —
+        # that's large and the LLM doesn't need it. The builder handles the template.)
+        results.append({
+            "chart_type": chart_type,
+            "description": template_data.get("description", ""),
+            "data_mapping": template_data["data_mapping"],
+            "visual_features": template_data.get("visual_features", []),
+        })
+
+    return json.dumps(results, indent=2)
+
+
+# ---------------------------------------------------------------------------
+# Field Inference (Layer 3 - Step 0: runs BEFORE validation)
+# ---------------------------------------------------------------------------
+
+def _infer_missing_fields(chart_spec: dict) -> dict:
+    """Infer missing ChartSpec fields from existing data — deterministic recovery.
+
+    When the LLM provides data but forgets supporting fields (y_fields, x_field,
+    search_hint, labels), this function recovers them from the data structure.
+    The LLM's explicit values always take precedence — inference only fills gaps.
+
+    This is the key reliability layer: it means the LLM only MUST provide
+    'type', 'data', and 'title'. Everything else can be inferred.
+    """
+    data = chart_spec.get("data", [])
+    if not data or not isinstance(data[0], dict):
+        return chart_spec
+
+    chart_type = chart_spec.get("type", "bar")
+    first_row = data[0]
+
+    # --- Infer x_field: first string-valued field in data ---
+    if chart_type in ("line", "bar", "scatter") and not chart_spec.get("x_field"):
+        for k, v in first_row.items():
+            if isinstance(v, str):
+                chart_spec["x_field"] = k
+                logger.info("field_inferred", field="x_field", value=k)
+                break
+
+    # --- Infer y_fields: all numeric fields except x_field ---
+    if chart_type in ("line", "bar", "scatter") and not chart_spec.get("y_fields"):
+        x_field = chart_spec.get("x_field", "")
+        inferred = [
+            k for k, v in first_row.items()
+            if k != x_field and isinstance(v, (int, float))
+        ]
+        if inferred:
+            chart_spec["y_fields"] = inferred
+            logger.info("field_inferred", field="y_fields", value=inferred)
+
+    # --- Infer search_hint from type + title ---
+    if not chart_spec.get("search_hint"):
+        title = chart_spec.get("title", "")
+        chart_spec["search_hint"] = f"{chart_type} chart for {title}" if title else f"{chart_type} chart"
+
+    # --- Infer x_label from x_field name ---
+    if chart_type in ("line", "bar", "scatter") and not chart_spec.get("x_label"):
+        x_field = chart_spec.get("x_field", "")
+        if x_field:
+            chart_spec["x_label"] = x_field.replace("_", " ").title()
+
+    # --- Infer y_label from unit or first y_field ---
+    if chart_type in ("line", "bar", "scatter") and not chart_spec.get("y_label"):
+        unit = chart_spec.get("unit", "")
+        y_fields = chart_spec.get("y_fields", [])
+        if unit:
+            chart_spec["y_label"] = unit
+        elif len(y_fields) == 1:
+            chart_spec["y_label"] = y_fields[0].replace("_", " ").title()
+
+    return chart_spec
+
+
+# ---------------------------------------------------------------------------
+# Shape Validator (Layer 3 - Step A: runs AFTER inference)
 # ---------------------------------------------------------------------------
 
 def validate_shape(chart_spec: dict) -> dict:
     """Validate data shape matches chart type. Auto-downgrade if incompatible.
 
-    Returns the (possibly modified) chart_spec with a valid chart type.
+    Runs AFTER _infer_missing_fields, so most recoverable specs will already
+    have their fields filled. Downgrades only happen when data is fundamentally
+    incompatible with the chart type (not just missing an inferable field).
     """
     chart_type = chart_spec.get("type", "bar")
     reqs = _SHAPE_REQUIREMENTS.get(chart_type, {})
 
-    # Check required fields
+    # Check required fields (after inference has had a chance to fill them)
     if "needs" in reqs:
         missing = [f for f in reqs["needs"] if not chart_spec.get(f)]
         if missing:
             logger.warning("shape_downgrade", from_type=chart_type, to_type="bar",
-                           reason=f"missing fields: {missing}")
+                           reason=f"missing fields after inference: {missing}")
             chart_spec = {**chart_spec, "type": "bar"}
 
     # Check data key requirements (pie, donut, gauge)
     if "needs_data_keys" in reqs:
         data = chart_spec.get("data", [])
         if not data:
-            # Empty data for types that require it — downgrade
             logger.warning("shape_downgrade", from_type=chart_type, to_type="bar",
                            reason="empty data array")
             chart_spec = {**chart_spec, "type": "bar"}
@@ -198,6 +353,34 @@ def validate_shape(chart_spec: dict) -> dict:
 # ---------------------------------------------------------------------------
 
 _ARRAY_INDEX_RE = re.compile(r"^(.+)\[(\d+)\]$")
+
+
+def _normalize_path(path: Any) -> str | None:
+    """Normalize a path to a dot-notation string.
+
+    Handles cases where LLM-generated metadata produces paths as:
+    - strings (correct): "series[0].data" → returned as-is
+    - lists: ["series", 0, "data"] → converted to "series[0].data"
+    - None/empty: → returns None
+    """
+    if isinstance(path, str) and path:
+        # Fix malformed brackets from LLM-generated metadata:
+        # series[].data → series[0].data, series[abc].data → series[0].data
+        path = re.sub(r'\[(?!\d+\])([^\]]*)\]', '[0]', path)
+        return path
+    if isinstance(path, list) and path:
+        parts = []
+        for p in path:
+            if isinstance(p, int):
+                # Array index — attach to previous part
+                if parts:
+                    parts[-1] = f"{parts[-1]}[{p}]"
+                else:
+                    parts.append(str(p))
+            else:
+                parts.append(str(p))
+        return ".".join(parts) if parts else None
+    return None
 
 
 def _resolve_path(obj: Any, path: str) -> tuple[Any, str]:
@@ -225,31 +408,42 @@ def _resolve_path(obj: Any, path: str) -> tuple[Any, str]:
     return current, final_part
 
 
-def set_nested_value(obj: dict, path: str, value: Any) -> None:
+def set_nested_value(obj: dict, path: Any, value: Any) -> None:
     """Set a value at a dot-notation path in a nested dict.
 
     Supports array indexing: 'series[0].data' sets obj['series'][0]['data'].
+    Handles non-string paths by normalizing them first.
     """
+    path = _normalize_path(path)
     if not path:
         return
-    parent, key = _resolve_path(obj, path)
-    if isinstance(parent, list):
-        parent[int(key)] = value
-    else:
-        parent[key] = value
-
-
-def get_nested_value(obj: dict, path: str) -> Any:
-    """Get a value at a dot-notation path in a nested dict."""
-    current = obj
-    for part in path.split("."):
-        match = _ARRAY_INDEX_RE.match(part)
-        if match:
-            key, idx = match.group(1), int(match.group(2))
-            current = current[key][idx]
+    try:
+        parent, key = _resolve_path(obj, path)
+        if isinstance(parent, list):
+            parent[int(key)] = value
         else:
-            current = current[part]
-    return current
+            parent[key] = value
+    except (KeyError, IndexError, TypeError) as e:
+        logger.warning("set_nested_value_failed", path=path, error=str(e))
+
+
+def get_nested_value(obj: dict, path: Any) -> Any:
+    """Get a value at a dot-notation path in a nested dict."""
+    path = _normalize_path(path)
+    if not path:
+        return None
+    try:
+        current = obj
+        for part in path.split("."):
+            match = _ARRAY_INDEX_RE.match(part)
+            if match:
+                key, idx = match.group(1), int(match.group(2))
+                current = current[key][idx]
+            else:
+                current = current[part]
+        return current
+    except (KeyError, IndexError, TypeError):
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -412,29 +606,76 @@ def _merge_pie(option: dict, spec: dict, mapping: dict) -> None:
 
 
 def _merge_radar(option: dict, spec: dict, mapping: dict) -> None:
-    """Fill radar chart with data."""
-    category_path = mapping.get("category_path")
-    if category_path and spec.get("metrics"):
-        max_values = spec.get("max_values", [100] * len(spec["metrics"]))
-        indicators = [
-            {"name": m, "max": mv}
-            for m, mv in zip(spec["metrics"], max_values)
-        ]
-        set_nested_value(option, category_path, indicators)
+    """Fill radar chart with data.
 
-    series_paths = mapping.get("series_paths", ["series[0].data"])
-    if series_paths and spec.get("data"):
-        radar_data = [
-            {"value": d.get("values", []), "name": d.get("name", "")}
-            for d in spec["data"]
-        ]
-        set_nested_value(option, series_paths[0], radar_data)
+    Supports BOTH data formats:
+    - Universal format: {"group": "Delhi", "metrics": {"Temp": 24, "Humidity": 55}}
+    - Legacy format: {"name": "Delhi", "values": [24, 55]}
 
-    # Legend
-    legend_path = mapping.get("legend_path")
-    if legend_path and spec.get("data"):
-        legend_names = [d.get("name", "") for d in spec["data"]]
-        set_nested_value(option, legend_path, legend_names)
+    For Universal format, metrics keys become radar indicators and values
+    become the data array — automatically synchronized.
+    """
+    data = spec.get("data", [])
+    if not data:
+        return
+
+    # Detect format: Universal (group/metrics) vs Legacy (name/values)
+    is_universal = "group" in data[0] and "metrics" in data[0]
+
+    if is_universal:
+        # Universal Observation Format: extract metrics from data
+        first_metrics = data[0].get("metrics", {})
+        metric_names = list(first_metrics.keys())
+
+        # Use explicit metrics from spec if provided, otherwise infer from data
+        metrics = spec.get("metrics") or metric_names
+        max_values = spec.get("max_values", [])
+        max_values = max_values + [100] * max(0, len(metrics) - len(max_values))
+
+        # Build indicators
+        category_path = mapping.get("category_path")
+        if category_path:
+            indicators = [{"name": m, "max": mv} for m, mv in zip(metrics, max_values)]
+            set_nested_value(option, category_path, indicators)
+
+        # Build radar data — extract values in metrics key order
+        series_paths = mapping.get("series_paths", ["series[0].data"])
+        if series_paths:
+            radar_data = [
+                {
+                    "name": d.get("group", ""),
+                    "value": [d.get("metrics", {}).get(m, 0) for m in metrics],
+                }
+                for d in data
+            ]
+            set_nested_value(option, series_paths[0], radar_data)
+
+        # Legend
+        legend_path = mapping.get("legend_path")
+        if legend_path:
+            set_nested_value(option, legend_path, [d.get("group", "") for d in data])
+
+    else:
+        # Legacy format: name/values
+        category_path = mapping.get("category_path")
+        if category_path and spec.get("metrics"):
+            metrics = spec["metrics"]
+            max_values = spec.get("max_values", [])
+            max_values = max_values + [100] * max(0, len(metrics) - len(max_values))
+            indicators = [{"name": m, "max": mv} for m, mv in zip(metrics, max_values)]
+            set_nested_value(option, category_path, indicators)
+
+        series_paths = mapping.get("series_paths", ["series[0].data"])
+        if series_paths:
+            radar_data = [
+                {"value": d.get("values", []), "name": d.get("name", "")}
+                for d in data
+            ]
+            set_nested_value(option, series_paths[0], radar_data)
+
+        legend_path = mapping.get("legend_path")
+        if legend_path:
+            set_nested_value(option, legend_path, [d.get("name", "") for d in data])
 
 
 def _merge_gauge(option: dict, spec: dict, mapping: dict) -> None:
@@ -539,7 +780,10 @@ def build_echarts_option(
     Returns:
         Complete ECharts option dict.
     """
-    # Step A: Validate shape, auto-downgrade if needed
+    # Step 0: Infer missing fields from data (deterministic recovery)
+    chart_spec = _infer_missing_fields(chart_spec)
+
+    # Step A: Validate shape, auto-downgrade if needed (after inference)
     chart_spec = validate_shape(chart_spec)
 
     # Step B: Search for best matching template

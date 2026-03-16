@@ -33,12 +33,11 @@ Visual report handling:
   the visual report covers that. Focus on the key takeaway.
 
 Visualization suggestion:
-- When your response contains data where a visual pattern (trend, distribution,
-  multi-dimensional comparison) exists that text alone cannot convey as effectively
-  as a chart, suggest visualization. The key question: would the reader understand
-  the data faster by seeing a chart than by reading numbers in text? If yes, end
-  your response with: "I can generate a visual report showing [specific pattern].
-  Would you like that?" If text is already clear, do not suggest."""
+- Only suggest visualization if there is no note above about visualization already
+  being attempted. When your response contains data where a visual pattern exists
+  that text alone cannot convey as effectively as a chart, end your response with:
+  "I can generate a visual report showing [specific pattern]. Would you like that?"
+  If text is already clear, do not suggest."""
 
 _synthesizer_llm: ChatAnthropic | None = None
 
@@ -81,11 +80,15 @@ async def synthesizer(state: WeatherState) -> dict[str, Any]:
 
     data_block = "\n\n".join(sections) if sections else "No data was gathered."
 
-    # Check if a visual report was generated
+    # Check visualization status: was it planned? did it succeed?
+    viz_was_planned = any(t.get("op") == "visualize" for t in state.get("plan", []))
     visual_report = state.get("visual_report", {})
     has_visual = bool(visual_report and visual_report.get("sections"))
+
     if has_visual:
-        data_block += "\n\nVISUAL REPORT: A visual report with charts has been generated and will be displayed alongside your response. Write a brief contextual introduction instead of a full analysis."
+        data_block += "\n\nVISUAL REPORT: Charts have been generated and will display alongside your response. Write a brief contextual introduction instead of a full analysis."
+    elif viz_was_planned:
+        data_block += "\n\nNOTE: A visual report was requested but could not be generated. Provide a thorough text-based analysis instead. Do NOT suggest generating a visual report."
 
     # Get the original user query from messages
     user_query = ""
