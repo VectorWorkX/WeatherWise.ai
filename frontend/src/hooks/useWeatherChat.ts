@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import type { ChatMessage, ToolCall, WSMessage } from "../types/chat";
+import type { ChatMessage, ToolCall, VisualReportData, WSMessage } from "../types/chat";
 import { WS_URL } from "../config/constants";
 
 export function useWeatherChat() {
@@ -158,6 +158,23 @@ export function useWeatherChat() {
           return updated;
         });
         setIsLoading(false);
+        break;
+
+      case "visual_report":
+        setMessages((prev) => {
+          const updated = [...prev];
+          // Attach visual report to the last assistant message
+          for (let i = updated.length - 1; i >= 0; i--) {
+            if (updated[i].role === "assistant") {
+              updated[i] = {
+                ...updated[i],
+                visualReport: data.data as VisualReportData,
+              };
+              break;
+            }
+          }
+          return updated;
+        });
         break;
 
       case "error":

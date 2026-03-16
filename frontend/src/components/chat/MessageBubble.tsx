@@ -6,6 +6,7 @@ import ApprovalPrompt from "./ApprovalPrompt";
 import IntentBadge from "./IntentBadge";
 import ToolCallStep from "./ToolCallStep";
 import TypingIndicator from "./TypingIndicator";
+import WeatherReport from "./WeatherReport";
 
 interface Props {
   message: ChatMessage;
@@ -73,6 +74,11 @@ export default function MessageBubble({ message, onApproval }: Props) {
               </div>
             )}
           </div>
+
+          {/* Visual Report (charts, metrics, insights) */}
+          {message.visualReport && message.visualReport.sections && message.visualReport.sections.length > 0 && (
+            <WeatherReport report={message.visualReport} />
+          )}
         </div>
       )}
     </motion.div>

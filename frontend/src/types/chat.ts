@@ -6,6 +6,20 @@ export interface ToolCall {
   status: "running" | "complete" | "error";
 }
 
+export interface VisualReportData {
+  title?: string;
+  subtitle?: string;
+  metrics?: { label: string; value: string; unit?: string; detail?: string }[];
+  sections?: {
+    heading: string;
+    narrative: string;
+    priority: number;
+    echarts_option: Record<string, unknown>;
+  }[];
+  insights?: string[];
+  error?: string;
+}
+
 export interface ChatMessage {
   id: string;
   role: "user" | "assistant" | "system";
@@ -13,6 +27,7 @@ export interface ChatMessage {
   intent?: string;
   intentLabel?: string;
   toolCalls?: ToolCall[];
+  visualReport?: VisualReportData;
   isStreaming?: boolean;
   pendingApproval?: boolean;
   approvalMessage?: string;
@@ -27,6 +42,7 @@ export type WSMessageType =
   | "token"
   | "approval_required"
   | "done"
+  | "visual_report"
   | "error";
 
 export interface WSMessage {
