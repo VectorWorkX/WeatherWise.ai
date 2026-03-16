@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import math
 import operator
+import re
 import signal
 import statistics
 
@@ -78,7 +79,7 @@ def compute_expression(expression: str) -> str:
 # ---------------------------------------------------------------------------
 
 # Maximum code length to prevent memory bombs
-_MAX_CODE_LENGTH = 3000
+_MAX_CODE_LENGTH = 15000
 
 # Execution timeout in seconds
 _EXEC_TIMEOUT = 5
@@ -213,6 +214,7 @@ def run_calculation(code: str, data: str = "") -> str:
         "__builtins__": _SAFE_BUILTINS,
         "math": math,
         "statistics": statistics,
+        "re": re,
         "data": data,
     }
     local_vars: dict = {}

@@ -76,8 +76,10 @@ axis labels with units, and any other elements that help the viewer understand \
 the chart without reading surrounding text.
 
 DATA EXTRACTION:
-Use run_calculation to extract numeric values from the weather data programmatically. \
-Never manually list values from tables — write code that parses the data completely.
+Use run_calculation to extract and compute values from the weather data. \
+The raw weather data is automatically available as the `data` variable in your code — \
+do NOT embed or copy the data into your code. Just write the parsing and computation logic. \
+Never manually list values from tables — write code that parses the data variable completely.
 
 GENERATING CHARTS:
 For each chart section, generate a COMPLETE ECharts option JSON object in the \
@@ -176,7 +178,12 @@ async def visualizer_agent(state: VisualizePayload) -> dict[str, Any]:
             for tool_call in response.tool_calls:
                 tool_fn = tool_map.get(tool_call["name"])
                 if tool_fn:
-                    tool_result = tool_fn.invoke(tool_call["args"])
+                    # Auto-inject weather data into run_calculation so the LLM
+                    # doesn't need to embed data in the code string
+                    args = dict(tool_call["args"])
+                    if tool_call["name"] == "run_calculation" and not args.get("data"):
+                        args["data"] = data_summary
+                    tool_result = tool_fn.invoke(args)
                 else:
                     tool_result = f"Unknown tool: {tool_call['name']}"
                 messages.append(ToolMessage(
