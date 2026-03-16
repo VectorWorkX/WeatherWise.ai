@@ -11,7 +11,7 @@ WeatherWise.ai is a stateful multi-agent weather system using a Planner-Executor
 - **Weather Data:** Xweather MCP Server (`https://mcp.api.xweather.com/mcp`) via `langchain-mcp-adapters`
 - **RAG:** Pinecone (serverless, free tier) + OpenAI `text-embedding-3-small` (1536 dims), summary-to-source multi-vector retrieval, parent content in vector metadata
 - **Document Parsing:** `unstructured` (`hi_res` strategy) for PDF text, tables, images — ingestion only
-- **Tools:** Xweather MCP tools (real-time), Pinecone RAG retrieval, sandboxed Python calculator (math + statistics), ECharts visualization (Pinecone template search + deterministic merger)
+- **Tools:** Xweather MCP tools (real-time), Pinecone RAG retrieval, sandboxed Python calculator (math + statistics), ECharts visualization (LLM generates complete ECharts JSON directly)
 - **Checkpointing:** MemorySaver (production + dev), AsyncSqliteSaver (local persistent). Redis planned via Redis Cloud free tier (GCP Memorystore lacks RediSearch module needed by langgraph-checkpoint-redis v0.3+)
 - **Prompt Caching:** Anthropic native prompt caching via `cache_control` content blocks (GA, no beta header)
 - **Validation:** Pydantic models for structured output
@@ -24,7 +24,7 @@ WeatherWise.ai is a stateful multi-agent weather system using a Planner-Executor
 - **Fan-in:** Workers loop back to executor; reducers merge parallel writes
 - **Dependency-aware execution:** Planner assigns `depends_on` indices to each task. Executor dispatches tasks whose dependencies are satisfied, producing dynamic parallel waves. No hardcoded phase ordering.
 - **Graph flow:** START -> supervisor -> planner -> executor -> [ready workers] -> executor -> [next wave] -> ... -> executor -> synthesizer -> END
-- **Visualization:** Visualizer agent runs as a plan task (op="visualize") with dependency-aware execution. Uses 3-layer architecture: LLM Storyteller (chart selection + data analysis) → Pinecone Stylist (template retrieval from visual_templates namespace) → Deterministic Builder (shape validation + template merge + formatter injection). Fallback: static baseline templates when Pinecone unavailable.
+- **Visualization:** Visualizer agent runs as a plan task (op="visualize") with dependency-aware execution. Uses generative approach: LLM analyzes data, extracts values via run_calculation, and generates complete ECharts option JSON directly. No templates, no Pinecone search, no merging. Frontend renders echarts_option with theme="dark".
 - **Async-native:** All nodes are `async def`, graph uses `ainvoke()`/`astream()`
 
 ## Key Files
@@ -34,8 +34,7 @@ WeatherWise.ai is a stateful multi-agent weather system using a Planner-Executor
 - `src/weatherwise/tools/xweather_mcp.py` — Xweather MCP client config
 - `src/weatherwise/tools/vector_search.py` — Pinecone retrieval (runtime, lightweight)
 - `src/weatherwise/tools/math_ops.py` — Calculator tools: `compute_expression` (arithmetic) + `run_calculation` (sandboxed Python with math/statistics)
-- `src/weatherwise/tools/chart_templates.py` — Visualization tools: Pinecone template search + shape validator + merger + formatter injector
-- `src/weatherwise/nodes/visualizer.py` — Visualizer agent: designs visual stories with ECharts charts + metrics + insights
+- `src/weatherwise/nodes/visualizer.py` — Visualizer agent: generates complete ECharts option JSON directly (generative approach, no templates)
 - `src/weatherwise/main.py` — Entry point with checkpointing
 - `scripts/build_knowledge.py` — Offline RAG ingestion pipeline (PDF/image -> Pinecone)
 - `scripts/verify_retrieval.py` — RAG retrieval test harness

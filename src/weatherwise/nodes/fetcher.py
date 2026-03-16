@@ -8,7 +8,6 @@ The LLM decides autonomously whether to retry with a different tool on error.
 
 from __future__ import annotations
 
-import asyncio
 import os
 from datetime import datetime
 from typing import Any
@@ -22,13 +21,6 @@ from weatherwise.state import FetchPayload
 from weatherwise.tools.xweather_mcp import get_xweather_tools
 
 logger = get_logger(__name__)
-
-# Limit concurrent Haiku API calls to avoid blowing the 50K input tokens/min rate limit.
-# With 4 parallel fetchers, unlimited concurrency sends ~32K tokens instantly.
-# Semaphore(3) allows up to 3 concurrent fetchers. With prompt caching active
-# (identical system prompts across parallel fetchers), cached tokens reduce
-# effective token usage per call, giving headroom above the original estimate.
-_FETCH_SEMAPHORE = asyncio.Semaphore(3)
 
 FETCHER_SYSTEM_PROMPT = """You are a weather data fetcher. Today's date is {today_date}.
 
@@ -138,8 +130,7 @@ async def fetcher_agent(state: FetchPayload) -> dict[str, Any]:
         else:
             prompt = f"Get weather information for {location}"
 
-        async with _FETCH_SEMAPHORE:
-            raw_response = await _invoke_fetch_loop(tools, prompt)
+        raw_response = await _invoke_fetch_loop(tools, prompt)
 
         logger.info("fetcher_success", location=location)
 
