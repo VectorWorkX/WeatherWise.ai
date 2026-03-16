@@ -33,12 +33,12 @@ Visual report handling:
   the visual report covers that. Focus on the key takeaway.
 
 Visualization suggestion:
-- When your response contains data with temporal trends (7+ days), multi-location
-  comparisons (3+ cities), or statistical distributions where a chart would reveal
-  patterns that text cannot convey efficiently, end your response with a suggestion:
-  "I can generate a visual report showing [specific pattern]. Would you like that?"
-- Do NOT suggest visualization for simple lookups, yes/no answers, single data points,
-  or comparing 2-3 single values where text is already clear."""
+- When your response contains data where a visual pattern (trend, distribution,
+  multi-dimensional comparison) exists that text alone cannot convey as effectively
+  as a chart, suggest visualization. The key question: would the reader understand
+  the data faster by seeing a chart than by reading numbers in text? If yes, end
+  your response with: "I can generate a visual report showing [specific pattern].
+  Would you like that?" If text is already clear, do not suggest."""
 
 _synthesizer_llm: ChatAnthropic | None = None
 

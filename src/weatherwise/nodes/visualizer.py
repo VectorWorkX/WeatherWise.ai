@@ -176,10 +176,8 @@ async def visualizer_agent(state: VisualizePayload) -> dict[str, Any]:
 
         calc_context = ""
         if calculations:
-            # Truncate each calculation result to prevent context overload
-            truncated = [c[:500] + "..." if len(c) > 500 else c for c in calculations]
             calc_context = "\n\nCalculation results:\n" + "\n".join(
-                f"  - {t}" for t in truncated
+                f"  - {c}" for c in calculations
             )
 
         # Use LLM with tools to extract data and design the report
