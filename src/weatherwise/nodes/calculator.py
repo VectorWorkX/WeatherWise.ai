@@ -61,9 +61,9 @@ def _get_calc_llm() -> ChatAnthropic:
         _calc_llm = ChatAnthropic(
             model="claude-haiku-4-5-20251001",
             api_key=os.environ.get("ANTHROPIC_API_KEY"),
-            max_tokens=1024,
+            max_tokens=4096,
             temperature=0,
-            timeout=45.0,
+            timeout=60.0,
         )
     return _calc_llm
 
