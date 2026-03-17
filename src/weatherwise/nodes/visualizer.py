@@ -18,7 +18,7 @@ from typing import Any
 
 from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from weatherwise.logging import get_logger
 from weatherwise.retry import llm_retry
@@ -30,6 +30,21 @@ logger = get_logger(__name__)
 # ---------------------------------------------------------------------------
 # Structured output models
 # ---------------------------------------------------------------------------
+
+def _parse_json_string(v: Any) -> Any:
+    """Parse a value that might be a JSON string instead of a parsed object.
+
+    The Anthropic API sometimes serializes deeply nested fields as JSON strings
+    in tool_use responses. This handles both cases transparently.
+    """
+    if isinstance(v, str):
+        try:
+            import json
+            return json.loads(v)
+        except (json.JSONDecodeError, ValueError):
+            return v
+    return v
+
 
 class MetricCard(BaseModel):
     label: str
@@ -46,6 +61,11 @@ class ReportSection(BaseModel):
         description="Complete ECharts option JSON object ready for rendering"
     )
 
+    @field_validator("echarts_option", mode="before")
+    @classmethod
+    def parse_echarts_string(cls, v: Any) -> Any:
+        return _parse_json_string(v)
+
 
 class VisualReport(BaseModel):
     title: str
@@ -53,6 +73,21 @@ class VisualReport(BaseModel):
     metrics: list[MetricCard] = Field(default_factory=list)
     sections: list[ReportSection] = Field(min_length=1)
     insights: list[str] = Field(min_length=1)
+
+    @field_validator("sections", mode="before")
+    @classmethod
+    def parse_sections_string(cls, v: Any) -> Any:
+        return _parse_json_string(v)
+
+    @field_validator("metrics", mode="before")
+    @classmethod
+    def parse_metrics_string(cls, v: Any) -> Any:
+        return _parse_json_string(v)
+
+    @field_validator("insights", mode="before")
+    @classmethod
+    def parse_insights_string(cls, v: Any) -> Any:
+        return _parse_json_string(v)
 
 
 # ---------------------------------------------------------------------------
