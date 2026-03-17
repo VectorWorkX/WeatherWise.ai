@@ -68,7 +68,7 @@ comparisons, distributions, anomalies, correlations, or anything else worth show
 2. What would a viewer learn from seeing this visually that they can't get from text?
 3. What data SUPPORTS the insight? Always show the underlying data, not just the summary. \
 Think: if someone asks for a single statistic, what surrounding data would make that \
-statistic meaningful in context? Show both.
+statistic meaningful in context? Show both or more if necessary.
 4. How many chart sections does this story need? Use your judgment — sometimes one chart \
 is enough, sometimes the data has multiple dimensions that each deserve their own view.
 5. What context makes each chart self-explanatory? Consider reference lines, annotations, \
@@ -106,11 +106,11 @@ def _get_viz_llm() -> ChatAnthropic:
     global _viz_llm
     if _viz_llm is None:
         _viz_llm = ChatAnthropic(
-            model="claude-haiku-4-5-20251001",
+            model="claude-sonnet-4-20250514",
             api_key=os.environ.get("ANTHROPIC_API_KEY"),
             max_tokens=8000,
             temperature=0.2,
-            timeout=90.0,
+            timeout=120.0,
         )
     return _viz_llm
 
@@ -191,18 +191,34 @@ async def visualizer_agent(state: VisualizePayload) -> dict[str, Any]:
                     tool_call_id=tool_call["id"],
                 ))
 
-        # Structured output — LLM generates VisualReport with echarts_option
+        # Collect the last tool result (extracted data) for clean context
+        last_tool_results = []
+        for msg in reversed(messages):
+            if isinstance(msg, ToolMessage):
+                last_tool_results.insert(0, msg.content)
+            elif last_tool_results:
+                break  # stop at the first non-ToolMessage before collected results
+
+        extracted_data = "\n\n".join(last_tool_results) if last_tool_results else "No data extracted."
+
+        # Structured output with CLEAN context — only system prompt + extracted data
+        # Avoids passing the entire ReAct conversation (14,500+ tokens) to the generation call
         structured_llm = _get_viz_llm().with_structured_output(VisualReport)
 
         @llm_retry()
         async def _generate_report():
-            return await structured_llm.ainvoke(
-                messages + [HumanMessage(
-                    content="Now generate the VisualReport. For each chart section, "
-                            "write the complete ECharts option JSON in echarts_option. "
-                            "Include all extracted data values, metrics, and insights."
-                )]
-            )
+            return await structured_llm.ainvoke([
+                SystemMessage(content=[
+                    {"type": "text", "text": VISUALIZER_SYSTEM_PROMPT,
+                     "cache_control": {"type": "ephemeral"}},
+                ]),
+                HumanMessage(
+                    content=f"Query: {query}\n\n"
+                            f"Extracted data:\n{extracted_data}\n\n"
+                            f"Generate the VisualReport with complete ECharts option JSON "
+                            f"for each chart section. Include metrics and insights."
+                ),
+            ])
 
         report: VisualReport = await _generate_report()
 

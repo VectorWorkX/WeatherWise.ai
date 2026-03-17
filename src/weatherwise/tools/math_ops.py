@@ -84,9 +84,6 @@ _MAX_CODE_LENGTH = 15000
 # Execution timeout in seconds
 _EXEC_TIMEOUT = 5
 
-# Dangerous AST node types that must never appear in user code
-_FORBIDDEN_NODES = (ast.Import, ast.ImportFrom)
-
 # Builtins that are safe for numerical computation
 _SAFE_BUILTINS = {
     "abs": abs,
@@ -111,14 +108,39 @@ _SAFE_BUILTINS = {
     "False": False,
     "None": None,
     "isinstance": isinstance,
-    "print": print,  # captured via exec, not actually printed
+    "print": print,
     "chr": chr,
     "ord": ord,
     "map": map,
     "filter": filter,
     "any": any,
     "all": all,
+    # Exception types — LLMs write try/except blocks that need these
+    "ValueError": ValueError,
+    "TypeError": TypeError,
+    "KeyError": KeyError,
+    "IndexError": IndexError,
+    "Exception": Exception,
+    "ZeroDivisionError": ZeroDivisionError,
 }
+
+
+def _strip_imports(code: str) -> str:
+    """Remove import statements from code.
+
+    The sandbox pre-loads math, statistics, and re as globals.
+    LLMs write 'import re' or 'import statistics' out of habit — these
+    are redundant but harmless. Strip them instead of rejecting the code.
+    """
+    lines = code.split("\n")
+    cleaned = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("import ") or stripped.startswith("from "):
+            logger.info("sandbox_import_stripped", line=stripped)
+            continue
+        cleaned.append(line)
+    return "\n".join(cleaned)
 
 
 def _validate_code(code: str) -> str | None:
@@ -132,10 +154,6 @@ def _validate_code(code: str) -> str | None:
         return f"Syntax error: {e}"
 
     for node in ast.walk(tree):
-        # Block import statements
-        if isinstance(node, _FORBIDDEN_NODES):
-            return "Import statements are not allowed"
-
         # Block dunder attribute access (sandbox escape vector)
         if isinstance(node, ast.Attribute) and node.attr.startswith("__"):
             return f"Access to __{node.attr.lstrip('_')} is not allowed"
@@ -204,6 +222,9 @@ def run_calculation(code: str, data: str = "") -> str:
         }
         '''
     """
+    # Strip import statements (modules are pre-loaded as globals)
+    code = _strip_imports(code)
+
     # Validate code safety via AST analysis
     validation_error = _validate_code(code)
     if validation_error:
