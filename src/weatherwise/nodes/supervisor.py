@@ -1,7 +1,9 @@
-"""Supervisor node — classifies intent and routes the query.
+"""Supervisor node — classifies intent, detects ambiguity, and routes the query.
 
 Three-way classification: weather queries proceed to the planner,
 greetings and off-topic queries get a direct LLM response.
+If a weather query is too ambiguous to produce useful results,
+the supervisor asks a clarifying question before proceeding.
 """
 
 from __future__ import annotations
@@ -21,29 +23,31 @@ from weatherwise.state import WeatherState
 logger = get_logger(__name__)
 
 SYSTEM_PROMPT = """\
-You are an intent classifier for a weather assistant called WeatherWise.
-Analyze the user's message and assign it to exactly ONE bucket.
+You are an intent classifier and query validator for a weather assistant called WeatherWise.
+Analyze the user's message, classify it, and check if it's specific enough to proceed.
 
 ## Buckets
 
 1. **weather** — Any query related to weather, climate, forecasts, historical weather, air quality, alerts, storms, outdoor activity planning, or calculations involving weather data.
-   Examples: "What's the temp in Tokyo?", "5-day forecast for Denver", "Is it safe to go hiking tomorrow?", "Compare air quality in Delhi and Beijing", "What was the temperature on Jan 16, 2023?"
 
 2. **greeting** — Greetings, introductions, or questions about what WeatherWise can do.
-   Examples: "Hello", "Hi there!", "What can you do?"
 
 3. **off_topic** — Queries clearly unrelated to weather, climate, or outdoor conditions.
-   Examples: "What is the GDP of France?", "Write me a poem about cats."
 
 ## Rules
 - If a query could plausibly relate to weather, climate, outdoor conditions or similar, choose "weather" — not "off_topic".
 - For "greeting" and "off_topic" buckets, you MUST populate the `response` field:
-  - **greeting**: Introduce yourself as WeatherWise, a professional AI weather intelligence system. Briefly describe your capabilities (current conditions, forecasts, historical data, air quality, severe weather alerts, tropical storms, calculations, and research). Be friendly and invite the user to ask a weather question.
+  - **greeting**: Introduce yourself as WeatherWise, a professional AI weather intelligence system. Briefly describe your capabilities. Be friendly and invite the user to ask a weather question.
   - **off_topic**: Politely explain that you specialize in weather and redirect the user.
-- For "weather", leave the `response` field empty (null).
+- For "weather" queries, check if the query is specific enough to fetch useful data. \
+If a weather query is too vague or ambiguous to produce useful results — a broad region \
+instead of a specific city, a location name that maps to multiple places with no way to \
+determine which one from context, or critical missing details — set needs_clarification \
+to true and write a brief, helpful question in the response field asking the user to be \
+more specific. Only do this when you genuinely cannot determine what the user means from \
+context. If the intent is reasonably clear, proceed normally.
 """
 
-# Buckets that don't need the planner/executor pipeline
 _DIRECT_RESPONSE_BUCKETS = {"greeting", "off_topic"}
 
 
@@ -54,9 +58,13 @@ class RouteDecision(BaseModel):
         description="The intent bucket for this query."
     )
     reasoning: str = Field(description="Brief explanation of why this bucket was chosen.")
+    needs_clarification: bool = Field(
+        default=False,
+        description="True only if the weather query is too ambiguous to proceed without user input.",
+    )
     response: str | None = Field(
         default=None,
-        description="For greeting/off_topic buckets only: the natural-language reply.",
+        description="For greeting/off_topic: the reply. For weather with needs_clarification: the clarifying question.",
     )
 
 
@@ -68,9 +76,9 @@ def _get_supervisor_llm() -> ChatAnthropic:
     global _supervisor_llm
     if _supervisor_llm is None:
         _supervisor_llm = ChatAnthropic(
-            model="claude-haiku-4-5-20251001",
+            model="claude-sonnet-4-20250514",
             api_key=os.environ.get("ANTHROPIC_API_KEY"),
-            max_tokens=512,
+            max_tokens=1024,
             temperature=0,
             timeout=30.0,
         )
@@ -78,12 +86,12 @@ def _get_supervisor_llm() -> ChatAnthropic:
 
 
 async def supervisor(state: WeatherState) -> dict[str, Any]:
-    """Classify the user's latest message into an intent bucket.
+    """Classify the user's latest message and validate query clarity.
 
-    For weather intents, sets routing to "clear" so the planner runs.
-    For greeting/off_topic, generates a direct response and sets routing
-    to "ambiguous" (which routes to END, skipping the pipeline).
-    On failure, defaults to "clear" / "real_time" to avoid blocking.
+    For weather intents: proceeds to planner (routing="clear").
+    For ambiguous weather intents: asks clarifying question (routing="ambiguous").
+    For greeting/off_topic: generates direct response (routing="ambiguous").
+    On failure: defaults to "clear" to avoid blocking.
     """
     logger.info("supervisor_start")
 
@@ -104,23 +112,33 @@ async def supervisor(state: WeatherState) -> dict[str, Any]:
                     {"type": "text", "text": f"{date_ctx}\n\n{SYSTEM_PROMPT}",
                      "cache_control": {"type": "ephemeral"}},
                 ])]
-                + state["messages"][-6:]  # 3 exchanges of history for follow-up context
+                + state["messages"][-6:]
             )
 
         decision: RouteDecision = await _classify()
         intent = decision.bucket
 
-        logger.info("supervisor_result", intent=intent, reasoning=decision.reasoning)
+        logger.info("supervisor_result", intent=intent,
+                     reasoning=decision.reasoning,
+                     needs_clarification=decision.needs_clarification)
 
         # Greeting / off-topic: respond directly, skip pipeline
         if intent in _DIRECT_RESPONSE_BUCKETS:
             return {
                 "messages": [AIMessage(content=decision.response or "")],
-                "routing": "ambiguous",  # routes to END
+                "routing": "ambiguous",
                 "intent": intent,
             }
 
-        # Weather intent: proceed to planner
+        # Weather but needs clarification: ask and skip pipeline
+        if decision.needs_clarification and decision.response:
+            return {
+                "messages": [AIMessage(content=decision.response)],
+                "routing": "ambiguous",
+                "intent": intent,
+            }
+
+        # Weather intent, clear enough: proceed to planner
         return {
             "routing": "clear",
             "intent": intent,

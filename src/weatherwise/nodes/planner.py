@@ -40,7 +40,6 @@ Rules:
 - Use "depends_on" to express which tasks must finish first. The executor uses this to determine parallel execution waves automatically — tasks with satisfied dependencies run in parallel.
 - A "calculate" task that needs fetched data should list the relevant fetch task indices in "depends_on".
 - A "calculate" task that needs results from another calculation should list that calculation's index in "depends_on". It will receive those prior results.
-- Weather data requires city-level locations. If a query uses a broad area, state, or region that could resolve to multiple cities, reason about what specific location the user likely means based on context. If you genuinely cannot determine the right city, ask the user to be more specific instead of guessing.
 
 Examples:
 
@@ -95,11 +94,11 @@ def _get_planner_llm() -> ChatAnthropic:
     global _planner_llm
     if _planner_llm is None:
         _planner_llm = ChatAnthropic(
-            model="claude-haiku-4-5-20251001",
+            model="claude-sonnet-4-20250514",
             api_key=os.environ.get("ANTHROPIC_API_KEY"),
-            max_tokens=500,
+            max_tokens=1024,
             temperature=0,
-            timeout=30.0,
+            timeout=45.0,
         )
     return _planner_llm
 

@@ -26,6 +26,10 @@ Guidelines:
 - If calculations were performed, explain what they mean
 - Be concise but thorough — explain the science when relevant
 - If data is missing or a tool returned no results, say so honestly
+- Your analysis must be based on the fetched data provided below. Do not generate \
+generic advice or recommendations from training knowledge. If the fetched data \
+doesn't match what the user asked for, explain the mismatch honestly rather than \
+compensating with general information.
 
 Visual report handling:
 - If a visual report has been generated (indicated below), write a brief 2-3 sentence
@@ -97,6 +101,10 @@ async def synthesizer(state: WeatherState) -> dict[str, Any]:
             user_query = msg.content
             break
 
+    # Date context so synthesizer never hallucinates about past/future dates
+    from datetime import datetime
+    today_str = datetime.now().strftime("%A, %B %d, %Y")
+
     try:
         llm = _get_synthesizer_llm()
 
@@ -105,7 +113,7 @@ async def synthesizer(state: WeatherState) -> dict[str, Any]:
             return await llm.ainvoke(
                 [
                     SystemMessage(content=[
-                        {"type": "text", "text": SYSTEM_PROMPT,
+                        {"type": "text", "text": f"Current date: {today_str}\n\n{SYSTEM_PROMPT}",
                          "cache_control": {"type": "ephemeral"}},
                     ]),
                     HumanMessage(content=[
