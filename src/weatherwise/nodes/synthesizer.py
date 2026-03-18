@@ -74,7 +74,10 @@ async def synthesizer(state: WeatherState) -> dict[str, Any]:
         lines = []
         for loc in sorted(weather.keys()):
             entry = weather[loc]
-            lines.append(f"  {entry['location']}: {entry['raw_response']}")
+            if isinstance(entry, dict):
+                lines.append(f"  {entry.get('location', loc)}: {entry.get('raw_response', 'N/A')}")
+            else:
+                lines.append(f"  {loc}: {entry}")
         sections.append("WEATHER DATA:\n" + "\n".join(lines))
 
     knowledge = state.get("retrieved_knowledge", [])

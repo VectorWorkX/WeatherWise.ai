@@ -226,6 +226,15 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             if data.get("type") != "user_message":
                 continue
 
+            # Allow client to specify session_id for conversation continuity
+            # across WebSocket reconnects. If provided and different from
+            # current, switch to the client's session (resumes old checkpoint).
+            client_session = data.get("session_id")
+            if client_session and client_session != session_id:
+                session_id = client_session
+                config = {"configurable": {"thread_id": session_id}}
+                logger.info("session_resumed", thread_id=session_id)
+
             content = data.get("content", "").strip()
             if not content:
                 continue
@@ -360,13 +369,20 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
 
                 # Fallback: if streaming captured no tokens, extract from state
                 if not full_response:
-                    graph_state = await _graph.aget_state(run_config)
-                    if graph_state.values:
-                        msgs = graph_state.values.get("messages", [])
-                        for msg in reversed(msgs):
-                            if isinstance(msg, AIMessage) and msg.content:
-                                full_response = _extract_text(msg.content)
-                                break
+                    try:
+                        graph_state = await _graph.aget_state(run_config)
+                        if graph_state.values:
+                            msgs = graph_state.values.get("messages", [])
+                            for msg in reversed(msgs):
+                                if isinstance(msg, AIMessage) and msg.content:
+                                    full_response = _extract_text(msg.content)
+                                    break
+                    except Exception as e:
+                        logger.warning("state_fallback_failed", error=str(e))
+
+                if not full_response:
+                    logger.warning("empty_response", thread_id=session_id)
+                    full_response = "I wasn't able to generate a response. Please try again."
 
                 # Extract follow-up suggestions from the response
                 cleaned_response, suggestions = _extract_suggestions(full_response)

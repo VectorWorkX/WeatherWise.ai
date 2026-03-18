@@ -52,13 +52,34 @@ def _get_fetcher_llm() -> ChatAnthropic:
     return _fetcher_llm
 
 
+def _extract_text(content: Any) -> str:
+    """Extract clean text from content that may be a string or list of content blocks.
+
+    The Anthropic API and MCP tools can return content as:
+    - A plain string
+    - A list of content blocks: [{"type": "text", "text": "..."}]
+
+    str() on a list produces '[{"type": "text", "text": "..."}]' which is
+    a Python repr — not parseable as JSON and not readable as text.
+    This function extracts the actual text content in all cases.
+    """
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "".join(
+            block.get("text", "") if isinstance(block, dict) else str(block)
+            for block in content
+        )
+    return str(content)
+
+
 @llm_retry(max_attempts=3)
-async def _invoke_fetch_loop(tools: list, prompt: str) -> str:
+async def _invoke_fetch_loop(tools: list, prompt: str) -> tuple[str, str]:
     """Manual tool-calling loop — LLM selects tools and decides when to stop.
 
-    Same ReAct pattern as create_agent but without the internal StateGraph
-    overhead. The LLM autonomously decides whether to call another tool or
-    return a final text response based on the tool results it receives.
+    Returns (text_response, raw_tool_data):
+    - text_response: LLM's text interpretation of the data (for synthesizer)
+    - raw_tool_data: clean MCP tool response, typically structured JSON (for calculator/visualizer)
 
     Max 3 iterations (tool selection + up to 2 follow-ups for error recovery
     or supplementary data).
@@ -77,6 +98,8 @@ async def _invoke_fetch_loop(tools: list, prompt: str) -> str:
         ]),
         HumanMessage(content=prompt),
     ]
+
+    last_tool_data = ""
 
     max_iterations = 3
     for iteration in range(max_iterations):
@@ -98,14 +121,19 @@ async def _invoke_fetch_loop(tools: list, prompt: str) -> str:
                 except Exception as e:
                     tool_result = f"Tool execution error: {type(e).__name__}: {e}"
 
+            # Extract clean text from the tool result — avoids the
+            # [{'type': 'text', 'text': '...'}] wrapper that str() produces
+            clean_result = _extract_text(tool_result)
+            last_tool_data = clean_result
+
             messages.append(ToolMessage(
-                content=str(tool_result),
+                content=clean_result,
                 tool_call_id=tool_call["id"],
             ))
 
-    # Extract final text response
-    content = response.content if isinstance(response.content, str) else str(response.content)
-    return content
+    # Extract final text response — clean content blocks properly
+    text_response = _extract_text(response.content)
+    return text_response, last_tool_data
 
 
 async def fetcher_agent(state: FetchPayload) -> dict[str, Any]:
@@ -130,7 +158,7 @@ async def fetcher_agent(state: FetchPayload) -> dict[str, Any]:
         else:
             prompt = f"Get weather information for {location}"
 
-        raw_response = await _invoke_fetch_loop(tools, prompt)
+        raw_response, raw_data = await _invoke_fetch_loop(tools, prompt)
 
         logger.info("fetcher_success", location=location)
 
@@ -139,6 +167,7 @@ async def fetcher_agent(state: FetchPayload) -> dict[str, Any]:
         raw_response = (
             f"Weather data unavailable for {location}: {type(e).__name__}: {e}"
         )
+        raw_data = ""
 
     # Use plan_index in key to prevent data loss when multiple fetches
     # target the same location (e.g., current + historical for Santos)
@@ -148,6 +177,7 @@ async def fetcher_agent(state: FetchPayload) -> dict[str, Any]:
             "location": location,
             "query": query,
             "raw_response": raw_response,
+            "raw_data": raw_data,
         }},
         "completed_indices": [plan_index],
     }
