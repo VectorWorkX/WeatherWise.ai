@@ -6,6 +6,14 @@ export interface ToolCall {
   status: "running" | "complete" | "error";
 }
 
+export interface ThinkingStep {
+  id: string;
+  label: string;
+  status: "pending" | "active" | "done";
+  op?: string;
+  toolCall?: ToolCall;
+}
+
 export interface VisualReportData {
   title?: string;
   subtitle?: string;
@@ -27,7 +35,9 @@ export interface ChatMessage {
   intent?: string;
   intentLabel?: string;
   toolCalls?: ToolCall[];
+  thinkingSteps?: ThinkingStep[];
   visualReport?: VisualReportData;
+  suggestions?: string[];
   isStreaming?: boolean;
   pendingApproval?: boolean;
   approvalMessage?: string;
@@ -37,11 +47,13 @@ export interface ChatMessage {
 export type WSMessageType =
   | "connected"
   | "intent"
+  | "status"
   | "tool_call"
   | "tool_result"
   | "token"
   | "approval_required"
   | "done"
+  | "suggestions"
   | "visual_report"
   | "error";
 

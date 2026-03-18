@@ -36,12 +36,15 @@ Visual report handling:
   introduction that sets context for the chart. Do not repeat all the data in detail —
   the visual report covers that. Focus on the key takeaway.
 
-Visualization suggestion:
-- Only suggest visualization if there is no note above about visualization already
-  being attempted. When your response contains data where a visual pattern exists
-  that text alone cannot convey as effectively as a chart, end your response with:
-  "I can generate a visual report showing [specific pattern]. Would you like that?"
-  If text is already clear, do not suggest."""
+Follow-up suggestions:
+- At the very end of your response, add 2-3 short follow-up prompts the user might \
+naturally want to explore next. Base them on the data and conversation — not generic topics. \
+Format each on its own line prefixed with ">>>" and keep each under 60 characters.
+- If the data lends itself to visualization and no visual report was already generated, \
+include a visualization suggestion as one of the follow-up prompts. Do NOT write \
+visualization suggestions in the response body — only as a ">>>" prompt.
+- If you asked the user a question in your response (clarification, yes/no, preference), \
+make the follow-up prompts direct answers to that question so the user can click to reply."""
 
 _synthesizer_llm: ChatAnthropic | None = None
 
@@ -52,7 +55,7 @@ def _get_synthesizer_llm() -> ChatAnthropic:
         _synthesizer_llm = ChatAnthropic(
             model="claude-sonnet-4-20250514",
             api_key=os.environ.get("ANTHROPIC_API_KEY"),
-            max_tokens=1500,
+            max_tokens=5000,
             temperature=0.3,
             timeout=60.0,
         )

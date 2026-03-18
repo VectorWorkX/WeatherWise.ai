@@ -4,16 +4,17 @@ import remarkGfm from "remark-gfm";
 import type { ChatMessage } from "../../types/chat";
 import ApprovalPrompt from "./ApprovalPrompt";
 import IntentBadge from "./IntentBadge";
-import ToolCallStep from "./ToolCallStep";
+import ThinkingTimeline from "./ThinkingTimeline";
 import TypingIndicator from "./TypingIndicator";
 import WeatherReport from "./WeatherReport";
 
 interface Props {
   message: ChatMessage;
   onApproval?: (approved: boolean) => void;
+  onSuggestionClick?: (suggestion: string) => void;
 }
 
-export default function MessageBubble({ message, onApproval }: Props) {
+export default function MessageBubble({ message, onApproval, onSuggestionClick }: Props) {
   const isUser = message.role === "user";
 
   return (
@@ -37,12 +38,8 @@ export default function MessageBubble({ message, onApproval }: Props) {
             </div>
           )}
 
-          {message.toolCalls && message.toolCalls.length > 0 && (
-            <div className="mb-2">
-              {message.toolCalls.map((tc) => (
-                <ToolCallStep key={tc.callId} toolCall={tc} />
-              ))}
-            </div>
+          {message.thinkingSteps && message.thinkingSteps.length > 0 && (
+            <ThinkingTimeline steps={message.thinkingSteps} isStreaming={message.isStreaming} />
           )}
 
           {message.pendingApproval && onApproval && (
@@ -78,6 +75,26 @@ export default function MessageBubble({ message, onApproval }: Props) {
           {/* Visual Report (charts, metrics, insights) */}
           {message.visualReport && message.visualReport.sections && message.visualReport.sections.length > 0 && (
             <WeatherReport report={message.visualReport} />
+          )}
+
+          {/* Follow-up suggestion chips */}
+          {message.suggestions && message.suggestions.length > 0 && !message.isStreaming && (
+            <motion.div
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, delay: 0.2 }}
+              className="mt-4 flex flex-wrap gap-2"
+            >
+              {message.suggestions.map((suggestion, i) => (
+                <button
+                  key={i}
+                  onClick={() => onSuggestionClick?.(suggestion)}
+                  className="rounded-full border border-white/[0.08] bg-white/[0.03] px-3.5 py-1.5 text-[13px] text-neutral-400 transition-colors hover:bg-white/[0.06] hover:text-neutral-200 hover:border-white/[0.12]"
+                >
+                  {suggestion}
+                </button>
+              ))}
+            </motion.div>
           )}
         </div>
       )}

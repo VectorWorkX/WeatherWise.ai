@@ -1,8 +1,29 @@
-import { lazy, Suspense } from "react";
+import React, { lazy, Suspense } from "react";
 import { motion } from "framer-motion";
 import type { VisualReportData } from "../../types/chat";
 
 const ReactECharts = lazy(() => import("echarts-for-react"));
+
+// Error boundary prevents malformed ECharts options from crashing the entire UI
+class ChartErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean }
+> {
+  state = { hasError: false };
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="h-[300px] flex items-center justify-center text-neutral-500 text-sm">
+          Chart could not be rendered
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 interface Props {
   report: VisualReportData;
@@ -117,14 +138,16 @@ function ChartSection({ section }: { section: NonNullable<VisualReportData["sect
         <p className="text-xs text-neutral-500 mb-3">{section.narrative}</p>
       )}
       <div className="rounded-xl bg-white/[0.02] border border-white/[0.06] p-3">
-        <Suspense fallback={<div className="h-[300px] flex items-center justify-center text-neutral-500 text-sm">Loading chart...</div>}>
-          <ReactECharts
-            option={option}
-            theme="dark"
+        <ChartErrorBoundary>
+          <Suspense fallback={<div className="h-[300px] flex items-center justify-center text-neutral-500 text-sm">Loading chart...</div>}>
+            <ReactECharts
+              option={option}
+              theme="dark"
             style={{ height: "300px", width: "100%" }}
             notMerge={true}
-          />
-        </Suspense>
+            />
+          </Suspense>
+        </ChartErrorBoundary>
       </div>
     </div>
   );

@@ -27,11 +27,11 @@ FETCHER_SYSTEM_PROMPT = """You are a weather data fetcher. Today's date is {toda
 Your job is to use the available tools to get the requested weather information.
 
 Rules:
-- Read the descriptions of all available tools and pick the single most appropriate one for the request
+- Carefully read the DESCRIPTIONS of all available tools, not just their names. The description tells you what data the tool actually provides and its limitations. Pick the tool whose description best matches the request.
 - Call only ONE tool per request. Most tools return comprehensive data — do not call a second tool for data the first tool already provides
 - Only call a second tool if the first tool's result is clearly missing critical data the user needs
 - When dates are mentioned, use them exactly. When no dates are given and the query is about current conditions, use today's date ({today_date})
-- If a tool call fails, try an alternative tool that could provide similar information
+- If a tool call fails or returns zero records, try a different tool that could provide similar information
 - Return the raw data you receive — do not interpret or summarize it"""
 
 # Cached LLM instance — avoids re-creating HTTP clients on every parallel fetch

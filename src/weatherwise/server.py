@@ -154,6 +154,22 @@ def _safe_str(obj: Any) -> str:
         return "<unserializable>"
 
 
+def _extract_suggestions(text: str) -> tuple[str, list[str]]:
+    """Extract >>>-prefixed follow-up suggestions from the end of a response.
+
+    Returns (cleaned_text, suggestions_list).
+    """
+    lines = text.rstrip().split("\n")
+    suggestions: list[str] = []
+    # Collect >>> lines from the end
+    while lines and lines[-1].strip().startswith(">>>"):
+        suggestion = lines.pop().strip().removeprefix(">>>").strip()
+        if suggestion:
+            suggestions.insert(0, suggestion)
+    cleaned = "\n".join(lines).rstrip()
+    return cleaned, suggestions
+
+
 def _safe_json(obj: Any) -> Any:
     """Recursively convert an object to a JSON-safe structure."""
     if obj is None or isinstance(obj, (bool, int, float, str)):
@@ -255,8 +271,43 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                                 "type": "intent",
                                 "intent": intent,
                                 "label": intent_labels.get(intent, intent),
+                                "reasoning": output.get("reasoning", "") if isinstance(output, dict) else "",
                             })
                             intent_sent = True
+
+                    # --- Planner started ---
+                    elif kind == "on_chain_start" and event.get("name") == "planner":
+                        await websocket.send_json({
+                            "type": "status",
+                            "step": "planning",
+                        })
+
+                    # --- Planner finished — send plan summary and task descriptions ---
+                    elif kind == "on_chain_end" and event.get("name") == "planner":
+                        output = event.get("data", {}).get("output", {})
+                        if isinstance(output, dict):
+                            plan_tasks = output.get("plan", [])
+                            await websocket.send_json({
+                                "type": "status",
+                                "step": "plan_ready",
+                                "summary": output.get("summary", ""),
+                                "tasks": [
+                                    {
+                                        "op": t.get("op", ""),
+                                        "query": t.get("query", ""),
+                                        "location": t.get("location", ""),
+                                        "description": t.get("description", ""),
+                                    }
+                                    for t in plan_tasks
+                                ],
+                            })
+
+                    # --- Synthesizer started ---
+                    elif kind == "on_chain_start" and event.get("name") == "synthesizer":
+                        await websocket.send_json({
+                            "type": "status",
+                            "step": "synthesizing",
+                        })
 
                     # --- Tool call started ---
                     elif kind == "on_tool_start":
@@ -317,10 +368,20 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                                 full_response = _extract_text(msg.content)
                                 break
 
+                # Extract follow-up suggestions from the response
+                cleaned_response, suggestions = _extract_suggestions(full_response)
+
                 await websocket.send_json({
                     "type": "done",
-                    "full_content": full_response,
+                    "full_content": cleaned_response,
                 })
+
+                # Send follow-up suggestions if any were generated
+                if suggestions:
+                    await websocket.send_json({
+                        "type": "suggestions",
+                        "suggestions": suggestions,
+                    })
 
                 # Send visual report if one was generated
                 try:

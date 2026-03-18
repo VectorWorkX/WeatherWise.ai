@@ -65,7 +65,7 @@ export default function ChatPage() {
           <WelcomeMessage onQueryClick={handleQueryClick} />
         </div>
       ) : (
-        <MessageList messages={messages} onApproval={sendApproval} />
+        <MessageList messages={messages} onApproval={sendApproval} onSuggestionClick={sendMessage} />
       )}
 
       <ChatInput
