@@ -26,28 +26,17 @@ CALC_SYSTEM_PROMPT = """You are a weather data calculator with access to a Pytho
 
 You have two tools:
 1. **compute_expression** — for simple arithmetic on known values (e.g., "23.11 - 20.59", "(72 - 32) * 5/9")
-2. **run_calculation** — for anything complex: parsing tables, computing statistics over many values, correlations, multi-step analysis
+2. **run_calculation** — for anything complex: parsing structured data, computing statistics, correlations, multi-step analysis
 
 CRITICAL RULES:
-- When data contains a table with many rows, ALWAYS use run_calculation. Write Python code that parses the table to extract values programmatically. NEVER try to manually read and list values from a table — you WILL miss rows.
-- Pass the raw weather data as the `data` parameter to run_calculation, then parse it in your code.
+- The `data` variable in run_calculation contains structured JSON from the weather API. \
+ALWAYS parse it with `json.loads()`. NEVER copy or hardcode values from the conversation \
+into your code — you WILL make errors. Parse everything from the `data` variable.
 - Your code MUST assign the final answer to a variable called `result`.
-- Available in the sandbox: `math`, `statistics` modules, and standard builtins (abs, round, min, max, sum, len, sorted, list, dict, float, int, str, etc.)
-- For simple arithmetic with 2-3 known numbers, use compute_expression instead (faster).
-
-Example for table parsing:
-```python
-lines = data.strip().split('\\n')
-temps = []
-for line in lines:
-    parts = [p.strip() for p in line.split('|') if p.strip()]
-    if len(parts) >= 4:
-        try:
-            temps.append(float(parts[3]))  # extract specific column
-        except ValueError:
-            pass
-result = {'count': len(temps), 'mean': statistics.mean(temps), 'std_dev': statistics.stdev(temps)}
-```"""
+- Available in the sandbox: `json`, `math`, `statistics`, `re` modules and standard builtins.
+- The `data` variable may contain multiple location blocks separated by `--- location_N ---` markers. \
+Split by these markers to find each location's JSON data.
+- For simple arithmetic with 2-3 known numbers, use compute_expression instead (faster)."""
 
 _calc_tools = [compute_expression, run_calculation]
 _calc_tool_map = {t.name: t for t in _calc_tools}
