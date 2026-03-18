@@ -42,7 +42,7 @@ def _get_fetcher_llm() -> ChatAnthropic:
     global _fetcher_llm
     if _fetcher_llm is None:
         _fetcher_llm = ChatAnthropic(
-            model="claude-haiku-4-5-20251001",
+            model="claude-sonnet-4-20250514",
             api_key=os.environ.get("ANTHROPIC_API_KEY"),
             max_tokens=1024,
             temperature=0,
