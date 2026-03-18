@@ -2,15 +2,16 @@
 
 The visualizer thinks like a data journalist:
 1. Analyzes the data to find meaningful patterns
-2. Extracts data programmatically using run_calculation
-3. Generates the complete report (including ECharts options) as Python code
-4. The Python interpreter validates everything at execution time
-5. The ReAct loop retries automatically if code fails
+2. Decides what visual story to tell and how many charts it needs
+3. Extracts data programmatically using run_calculation
+4. Generates complete ECharts option JSON via structured output
+5. Produces metrics, insights, and narratives that go beyond the question
 
-All chart generation happens via code execution — not structured output.
-This is fundamentally more reliable because LLMs are better at writing code
-than generating complex nested JSON, and the interpreter catches errors
-immediately so the LLM can fix them on the next iteration.
+Two-phase pipeline:
+- Phase 1 (ReAct loop): extract and compute values from raw data via run_calculation
+- Phase 2 (Structured output): generate the complete VisualReport with ECharts options
+
+The frontend renders echarts_option directly with theme="dark".
 """
 
 from __future__ import annotations
@@ -21,12 +22,77 @@ from typing import Any
 
 from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
+from pydantic import BaseModel, Field, field_validator
 
 from weatherwise.logging import get_logger
+from weatherwise.retry import llm_retry
 from weatherwise.state import VisualizePayload
 from weatherwise.tools.math_ops import run_calculation
 
 logger = get_logger(__name__)
+
+# ---------------------------------------------------------------------------
+# Structured output models
+# ---------------------------------------------------------------------------
+
+def _parse_json_string(v: Any) -> Any:
+    """Parse a value that might be a JSON string instead of a parsed object.
+
+    The Anthropic API sometimes serializes deeply nested fields as JSON strings
+    in tool_use responses. This handles both cases transparently.
+    """
+    if isinstance(v, str):
+        try:
+            import json
+            return json.loads(v)
+        except (json.JSONDecodeError, ValueError):
+            return v
+    return v
+
+
+class MetricCard(BaseModel):
+    label: str
+    value: str
+    unit: str = ""
+    detail: str = ""
+
+
+class ReportSection(BaseModel):
+    heading: str
+    narrative: str
+    priority: int = Field(default=1, description="1 = full width, 2 = half width (side by side)")
+    echarts_option: dict[str, Any] = Field(
+        description="Complete ECharts option JSON object ready for rendering"
+    )
+
+    @field_validator("echarts_option", mode="before")
+    @classmethod
+    def parse_echarts_string(cls, v: Any) -> Any:
+        return _parse_json_string(v)
+
+
+class VisualReport(BaseModel):
+    title: str
+    subtitle: str = ""
+    metrics: list[MetricCard] = Field(default_factory=list)
+    sections: list[ReportSection] = Field(min_length=1)
+    insights: list[str] = Field(min_length=1)
+
+    @field_validator("sections", mode="before")
+    @classmethod
+    def parse_sections_string(cls, v: Any) -> Any:
+        return _parse_json_string(v)
+
+    @field_validator("metrics", mode="before")
+    @classmethod
+    def parse_metrics_string(cls, v: Any) -> Any:
+        return _parse_json_string(v)
+
+    @field_validator("insights", mode="before")
+    @classmethod
+    def parse_insights_string(cls, v: Any) -> Any:
+        return _parse_json_string(v)
+
 
 # ---------------------------------------------------------------------------
 # Visualizer LLM
@@ -48,46 +114,42 @@ is enough, sometimes the data has multiple dimensions that each deserve their ow
 axis labels with units, and any other elements that help the viewer understand \
 the chart without reading surrounding text.
 
-YOUR WORKFLOW (two run_calculation calls):
+DATA EXTRACTION:
+Use run_calculation to extract and compute values from the weather data. \
+The raw weather data is automatically available as the `data` variable in your code. \
+The data is structured JSON from the weather API — use `json.loads()` to parse it. \
+The `json` module is available in the sandbox. \
+NEVER copy or hardcode values from the conversation into your code — ALWAYS parse from `data`. \
+The `data` variable is a JSON string. Use `json.loads(data)` to get a dict keyed by location \
+(e.g., `all_data["phoenix_0"]`). Each value is the structured API response for that location. \
+Extract EVERY record in the dataset — verify your count matches the record_count in the metadata.
 
-**Call 1 — Data extraction:** Parse the raw weather data to extract numeric values. \
-The raw data is available as the `data` variable. Write code that parses it and assigns \
-the parsed values to `result` as a dict.
+GENERATING CHARTS:
+For each chart section, generate a COMPLETE ECharts option JSON object in the \
+echarts_option field. This must be valid JSON that ECharts can render directly. \
+Include title, tooltip, appropriate axes with labels and units, and series with data. \
+The frontend applies a dark theme automatically — do not set background colors, \
+but do set text colors to light values (#ccc, #999) for readability.
 
-**Call 2 — Report generation:** Construct the COMPLETE visual report as a dict and output \
-it with `result = json.dumps(report)`. Each call has its own isolated environment — \
-variables from call 1 do NOT exist in call 2. However, the `data` variable in call 2 \
-contains both the original weather data AND your extracted results from call 1 \
-(after a "--- EXTRACTED DATA ---" marker). Parse what you need from `data`. \
-The report dict must have this structure:
-{
-    "title": "string",
-    "subtitle": "string (optional)",
-    "metrics": [{"label": "string", "value": "string", "unit": "string", "detail": "string (optional)"}],
-    "sections": [{
-        "heading": "string",
-        "narrative": "string",
-        "priority": 1 or 2,  // 1 = full width, 2 = side by side
-        "echarts_option": { ... complete ECharts option object ... }
-    }],
-    "insights": ["string", "string", ...]
-}
+Make charts visually rich and professional. When comparing values with different \
+units or scales (for example, temperature and rainfall), use separate charts or \
+dual axes to keep both readable.
 
-ECHARTS GUIDELINES:
-- Generate COMPLETE ECharts option objects ready for rendering
-- Include tooltip, legend, axes with labels and units, and series with data
-- The frontend applies a dark theme — do not set background colors, \
-but set text colors to light values (#ccc, #999) for readability
-- When comparing values with different units or scales, use separate charts or dual axes
-- If the user requests a specific chart type, use that type
+If the user explicitly requests a specific chart type, use that type.
 
 CRITICAL: Your charts must be based entirely on the actual fetched data provided to you. \
 If the data contains zero records or no values for a metric, do NOT create charts for it — \
 report the gap instead. Never fill in charts with general reference information or \
 training knowledge.
 
-IMPORTANT: In call 2, you have access to `json` module. Always output the report \
-with `result = json.dumps(report)` so it can be parsed."""
+DATA ACCURACY: Every data point from the extraction must appear in the chart series. \
+Use the extracted numbers exactly — do not round, approximate, or omit values. \
+The chart must reflect the complete dataset, not a summary of it.
+
+METRICS: Highlight key numbers as metric cards with units.
+INSIGHTS: Provide meaningful analytical observations about what the data reveals.
+PRIORITY: priority=1 for the main chart (full width), priority=2 for supporting \
+charts (side-by-side)."""
 
 _viz_llm: ChatAnthropic | None = None
 
@@ -105,98 +167,6 @@ def _get_viz_llm() -> ChatAnthropic:
     return _viz_llm
 
 
-def _try_parse_dict(content: str) -> dict[str, Any] | None:
-    """Try to parse a string as a dict — JSON first, then Python repr fallback.
-
-    The LLM should output json.dumps(report), but may output the raw dict
-    (Python repr with single quotes). Handle both cases.
-    """
-    # Try JSON first (the expected format)
-    try:
-        parsed = json.loads(content)
-        if isinstance(parsed, dict):
-            return parsed
-    except (json.JSONDecodeError, ValueError):
-        pass
-
-    # Fallback: Python dict repr (single quotes, True/False/None)
-    import ast
-    try:
-        parsed = ast.literal_eval(content)
-        if isinstance(parsed, dict):
-            return parsed
-    except (ValueError, SyntaxError):
-        pass
-
-    return None
-
-
-def _extract_report_from_messages(messages: list) -> dict[str, Any] | None:
-    """Scan tool results for a valid report dict.
-
-    Walks backwards through messages looking for a ToolMessage whose content
-    parses to a dict with 'title' and 'sections' keys — the report output.
-    Handles both JSON and Python repr formats.
-    """
-    for msg in reversed(messages):
-        if not isinstance(msg, ToolMessage):
-            continue
-        content = msg.content
-        if not isinstance(content, str):
-            continue
-        parsed = _try_parse_dict(content)
-        if (
-            parsed
-            and "title" in parsed
-            and "sections" in parsed
-            and isinstance(parsed["sections"], list)
-        ):
-            return parsed
-    return None
-
-
-def _validate_and_fill_report(raw: dict[str, Any]) -> dict[str, Any]:
-    """Validate report structure and fill missing optional fields with defaults.
-
-    Instead of rejecting the report on missing fields, we fill sensible defaults.
-    This ensures a partial report still renders rather than failing entirely.
-    """
-    report: dict[str, Any] = {
-        "title": raw.get("title", "Visual Report"),
-        "subtitle": raw.get("subtitle", ""),
-        "metrics": [],
-        "sections": [],
-        "insights": [],
-    }
-
-    # Metrics
-    for m in raw.get("metrics", []):
-        if isinstance(m, dict) and "label" in m and "value" in m:
-            report["metrics"].append({
-                "label": m["label"],
-                "value": str(m["value"]),
-                "unit": m.get("unit", ""),
-                "detail": m.get("detail", ""),
-            })
-
-    # Sections
-    for s in raw.get("sections", []):
-        if isinstance(s, dict) and "echarts_option" in s:
-            report["sections"].append({
-                "heading": s.get("heading", "Chart"),
-                "narrative": s.get("narrative", ""),
-                "priority": s.get("priority", 1),
-                "echarts_option": s["echarts_option"],
-            })
-
-    # Insights
-    for insight in raw.get("insights", []):
-        if isinstance(insight, str) and insight.strip():
-            report["insights"].append(insight)
-
-    return report
-
-
 # ---------------------------------------------------------------------------
 # Visualizer node
 # ---------------------------------------------------------------------------
@@ -204,9 +174,12 @@ def _validate_and_fill_report(raw: dict[str, Any]) -> dict[str, Any]:
 async def visualizer_agent(state: VisualizePayload) -> dict[str, Any]:
     """Generate a visual story from fetched weather data.
 
-    Receives a VisualizePayload (via Send) with fetched_weather and calculations.
-    Uses a ReAct loop where the LLM generates the entire report — including
-    ECharts options — as Python code via run_calculation. No structured output.
+    Two-phase pipeline:
+    1. ReAct loop: extract and compute values via run_calculation
+    2. Structured output: generate VisualReport with ECharts options
+
+    Phase 2 uses clean context (only extracted data, not the full ReAct
+    conversation) to keep the structured output call focused and reliable.
     """
     query = state.get("query", "")
     plan_index = state["plan_index"]
@@ -216,15 +189,19 @@ async def visualizer_agent(state: VisualizePayload) -> dict[str, Any]:
     logger.info("visualizer_start", query=query, plan_index=plan_index)
 
     try:
-        # Build data context for the LLM — prefer raw_data (structured JSON)
-        # over raw_response (markdown text) for reliable parsing
-        data_summary = ""
+        # Build data context as a JSON dict keyed by location — no markers,
+        # json.loads(data) works on the first attempt every time
+        data_dict: dict[str, Any] = {}
         for loc, weather_data in fetched_weather.items():
             if isinstance(weather_data, dict):
-                entry = weather_data.get("raw_data") or weather_data.get("raw_response", str(weather_data))
+                raw = weather_data.get("raw_data") or weather_data.get("raw_response", str(weather_data))
             else:
-                entry = str(weather_data)
-            data_summary += f"\n--- {loc} ---\n{entry}"
+                raw = str(weather_data)
+            try:
+                data_dict[loc] = json.loads(raw) if isinstance(raw, str) else raw
+            except (json.JSONDecodeError, ValueError):
+                data_dict[loc] = raw
+        data_summary = json.dumps(data_dict)
 
         calc_context = ""
         if calculations:
@@ -232,7 +209,7 @@ async def visualizer_agent(state: VisualizePayload) -> dict[str, Any]:
                 f"  - {c}" for c in calculations
             )
 
-        # ReAct loop — data extraction AND report generation, all via code
+        # Phase 1: ReAct loop — data extraction via run_calculation
         llm = _get_viz_llm()
         _tools = [run_calculation]
         llm_with_tools = llm.bind_tools(_tools)
@@ -246,22 +223,13 @@ async def visualizer_agent(state: VisualizePayload) -> dict[str, Any]:
             HumanMessage(
                 content=f"Create a visual report for this query: {query}\n\n"
                         f"Available weather data:{data_summary}{calc_context}\n\n"
-                        f"Step 1: Use run_calculation to extract and parse the data.\n"
-                        f"Step 2: Use run_calculation to construct the complete report dict "
-                        f"(with ECharts options) and output it with result = json.dumps(report).\n\n"
-                        f"IMPORTANT: Each run_calculation call has its own isolated environment. "
-                        f"The `data` variable always contains the raw weather data plus any "
-                        f"previously extracted results. You can parse either."
+                        f"Analyze the data, use run_calculation to extract values "
+                        f"programmatically, then generate the VisualReport with "
+                        f"complete ECharts option JSON for each chart section."
             ),
         ]
 
-        # Track accumulated results so subsequent calls can access extracted data.
-        # Each run_calculation has its own isolated sandbox — variables from call 1
-        # don't exist in call 2. We solve this by appending previous results to the
-        # data variable, so the LLM can parse them in later calls.
-        accumulated_data = data_summary
-
-        max_iterations = 6
+        max_iterations = 5
         for _ in range(max_iterations):
             response = await llm_with_tools.ainvoke(messages)
             messages.append(response)
@@ -274,20 +242,8 @@ async def visualizer_agent(state: VisualizePayload) -> dict[str, Any]:
                 if tool_fn:
                     args = dict(tool_call["args"])
                     if tool_call["name"] == "run_calculation" and not args.get("data"):
-                        args["data"] = accumulated_data
+                        args["data"] = data_summary
                     tool_result = tool_fn.invoke(args)
-                    # Append successful results so the next call can access them.
-                    # All error prefixes from run_calculation in math_ops.py:
-                    #   "Code validation error:", "Code execution error:",
-                    #   "Code execution timed out", "Error: code must assign"
-                    result_str = str(tool_result)
-                    _error_prefixes = ("Code validation error", "Code execution error",
-                                       "Code execution timed out", "Error: code must assign")
-                    if not result_str.startswith(_error_prefixes):
-                        accumulated_data = (
-                            data_summary
-                            + f"\n\n--- EXTRACTED DATA (from previous step) ---\n{result_str}"
-                        )
                 else:
                     tool_result = f"Unknown tool: {tool_call['name']}"
                 messages.append(ToolMessage(
@@ -295,19 +251,55 @@ async def visualizer_agent(state: VisualizePayload) -> dict[str, Any]:
                     tool_call_id=tool_call["id"],
                 ))
 
-        # Extract the report from tool results
-        raw_report = _extract_report_from_messages(messages)
+        # Collect the last tool results (extracted data) for clean context
+        last_tool_results = []
+        for msg in reversed(messages):
+            if isinstance(msg, ToolMessage):
+                last_tool_results.insert(0, msg.content)
+            elif last_tool_results:
+                break
 
-        if raw_report:
-            visual_report = _validate_and_fill_report(raw_report)
-            logger.info("visualizer_success", plan_index=plan_index,
-                         section_count=len(visual_report.get("sections", [])))
-        else:
-            logger.warning("visualizer_no_report_found", plan_index=plan_index)
-            visual_report = {
-                "error": "Visualization could not be generated — no valid report was produced.",
-                "sections": [],
-            }
+        extracted_data = "\n\n".join(last_tool_results) if last_tool_results else "No data extracted."
+
+        # Phase 2: Structured output with CLEAN context
+        # Only system prompt + extracted data — avoids bloated ReAct conversation
+        structured_llm = _get_viz_llm().with_structured_output(VisualReport)
+
+        @llm_retry()
+        async def _generate_report():
+            return await structured_llm.ainvoke([
+                SystemMessage(content=[
+                    {"type": "text", "text": VISUALIZER_SYSTEM_PROMPT,
+                     "cache_control": {"type": "ephemeral"}},
+                ]),
+                HumanMessage(
+                    content=f"Query: {query}\n\n"
+                            f"Extracted data:\n{extracted_data}\n\n"
+                            f"Generate the VisualReport with complete ECharts option JSON "
+                            f"for each chart section. Include metrics and insights."
+                ),
+            ])
+
+        report: VisualReport = await _generate_report()
+
+        visual_report = {
+            "title": report.title,
+            "subtitle": report.subtitle,
+            "metrics": [m.model_dump() for m in report.metrics],
+            "sections": [
+                {
+                    "heading": s.heading,
+                    "narrative": s.narrative,
+                    "priority": s.priority,
+                    "echarts_option": s.echarts_option,
+                }
+                for s in report.sections
+            ],
+            "insights": report.insights,
+        }
+
+        logger.info("visualizer_success", plan_index=plan_index,
+                     section_count=len(report.sections))
 
     except Exception as e:
         logger.error("visualizer_failed", error=str(e), plan_index=plan_index)

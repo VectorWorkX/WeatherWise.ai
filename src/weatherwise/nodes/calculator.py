@@ -10,6 +10,8 @@ The LLM decides which tool to use based on the complexity of the request.
 
 from __future__ import annotations
 
+import json
+
 import os
 from typing import Any
 
@@ -34,8 +36,8 @@ ALWAYS parse it with `json.loads()`. NEVER copy or hardcode values from the conv
 into your code — you WILL make errors. Parse everything from the `data` variable.
 - Your code MUST assign the final answer to a variable called `result`.
 - Available in the sandbox: `json`, `math`, `statistics`, `re` modules and standard builtins.
-- The `data` variable may contain multiple location blocks separated by `--- location_N ---` markers. \
-Split by these markers to find each location's JSON data.
+- The `data` variable is a JSON string. Use `json.loads(data)` to get a dict keyed by location \
+(e.g., `all_data["phoenix_0"]`). Each value is the structured API response for that location.
 - For simple arithmetic with 2-3 known numbers, use compute_expression instead (faster)."""
 
 _calc_tools = [compute_expression, run_calculation]
@@ -75,13 +77,17 @@ async def calculator_agent(state: CalcPayload) -> dict[str, Any]:
     try:
         llm = _get_calc_llm().bind_tools(_calc_tools)
 
-        data_summary = ""
+        data_dict: dict[str, Any] = {}
         for loc, weather_data in fetched_weather.items():
             if isinstance(weather_data, dict):
-                entry = weather_data.get("raw_data") or weather_data.get("raw_response", str(weather_data))
+                raw = weather_data.get("raw_data") or weather_data.get("raw_response", str(weather_data))
             else:
-                entry = str(weather_data)
-            data_summary += f"\n--- {loc} ---\n{entry}"
+                raw = str(weather_data)
+            try:
+                data_dict[loc] = json.loads(raw) if isinstance(raw, str) else raw
+            except (json.JSONDecodeError, ValueError):
+                data_dict[loc] = raw
+        data_summary = json.dumps(data_dict)
 
         # Include prior calculation results if this task depends on earlier calcs
         prior_context = ""
