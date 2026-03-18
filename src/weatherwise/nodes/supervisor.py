@@ -113,7 +113,7 @@ async def supervisor(state: WeatherState) -> dict[str, Any]:
                     {"type": "text", "text": f"{date_ctx}\n\n{SYSTEM_PROMPT}",
                      "cache_control": {"type": "ephemeral"}},
                 ])]
-                + state["messages"][-6:]
+                + state["messages"][-12:]
             )
 
         decision: RouteDecision = await _classify()

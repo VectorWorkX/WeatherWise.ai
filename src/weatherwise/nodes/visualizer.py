@@ -8,7 +8,7 @@ The visualizer thinks like a data journalist:
 5. Produces metrics, insights, and narratives that go beyond the question
 
 The LLM writes the final ECharts configuration itself. The frontend renders
-it directly with theme="dark". No intermediate format, no template search.
+it directly with theme="dark".
 """
 
 from __future__ import annotations
@@ -128,6 +128,11 @@ units or scales (for example, temperature and rainfall), use separate charts or 
 dual axes to keep both readable.
 
 If the user explicitly requests a specific chart type, use that type.
+
+CRITICAL: Your charts must be based entirely on the actual fetched data provided to you. \
+If the data contains zero records or no values for a metric, do NOT create charts for it — \
+report the gap instead. Never fill in charts with general reference information or \
+training knowledge.
 
 METRICS: Highlight key numbers as metric cards with units.
 INSIGHTS: Provide meaningful analytical observations about what the data reveals.

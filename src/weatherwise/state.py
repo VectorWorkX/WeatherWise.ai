@@ -68,6 +68,10 @@ class WeatherState(TypedDict):
     # Planner sends {} to reset for new query.
     visual_report: Annotated[dict[str, Any], merge_dicts]
 
+    # Planner summary — LLM-generated sentence describing the approach.
+    # Displayed in the thinking timeline on the frontend.
+    summary: str
+
     # Routing decision set by the supervisor.
     # "clear" = proceed to planner, "ambiguous" = ask user for clarification.
     routing: Literal["clear", "ambiguous"]

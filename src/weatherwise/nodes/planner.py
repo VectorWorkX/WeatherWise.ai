@@ -78,11 +78,18 @@ class PlanTask(BaseModel):
         default_factory=list,
         description="Indices (0-based) of tasks that must complete before this one runs.",
     )
+    description: str = Field(
+        default="",
+        description="A natural first-person sentence explaining what this step does and why, for display to the user",
+    )
 
 
 class PlanOutput(BaseModel):
     """Structured output from the planner LLM."""
 
+    summary: str = Field(
+        description="One natural sentence describing your overall approach to answering this query",
+    )
     tasks: list[PlanTask] = Field(min_length=1)
 
 
@@ -131,12 +138,13 @@ async def planner(state: WeatherState) -> dict[str, Any]:
                 [SystemMessage(content=[
                     {"type": "text", "text": resolved_prompt,
                      "cache_control": {"type": "ephemeral"}},
-                ])] + list(state["messages"][-10:])
+                ])] + list(state["messages"][-12:])
             )
 
         result = await _plan()
         plan = [task.model_dump() for task in result.tasks]
-        logger.info("planner_result", task_count=len(plan), plan=plan)
+        summary = result.summary
+        logger.info("planner_result", task_count=len(plan), summary=summary, plan=plan)
 
     except Exception as e:
         logger.error("planner_failed", error=str(e))
@@ -147,10 +155,12 @@ async def planner(state: WeatherState) -> dict[str, Any]:
                 user_msg = msg.content
                 break
         plan = [{"op": "fetch", "location": user_msg or "unknown", "query": user_msg}]
+        summary = ""
 
     # Reset all per-query state fields (empty list/dict triggers reset in reducers)
     return {
         "plan": plan,
+        "summary": summary,
         "completed_indices": [],
         "fetched_weather": {},
         "retrieved_knowledge": [],

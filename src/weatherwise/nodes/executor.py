@@ -29,6 +29,30 @@ MAX_EXECUTOR_ITERATIONS = 15
 _VALID_OPS = {"fetch", "research", "calculate", "visualize"}
 
 
+def _filter_weather_by_deps(
+    fetched_weather: dict[str, Any],
+    depends_on: list[int],
+) -> dict[str, Any]:
+    """Filter fetched_weather to only include data from dependency tasks.
+
+    Keys in fetched_weather are like "delhi_0", "sanjose_1" — the trailing
+    number is the plan_index. Only include entries whose plan_index is in
+    the depends_on list. Falls back to full dict if no matches found.
+    """
+    if not depends_on:
+        return fetched_weather
+
+    dep_set = set(depends_on)
+    filtered = {}
+    for key, value in fetched_weather.items():
+        parts = key.rsplit("_", 1)
+        if len(parts) == 2 and parts[1].isdigit():
+            if int(parts[1]) in dep_set:
+                filtered[key] = value
+
+    return filtered if filtered else fetched_weather
+
+
 async def executor(state: WeatherState) -> dict[str, Any]:
     """Pass-through node — routing logic lives in route_from_executor."""
     return {}
@@ -152,7 +176,9 @@ def route_from_executor(
         elif op == "calculate":
             calc_payload = {
                 **base_payload,
-                "fetched_weather": state.get("fetched_weather", {}),
+                "fetched_weather": _filter_weather_by_deps(
+                    state.get("fetched_weather", {}), depends_on
+                ),
                 "prior_calculations": list(state.get("calculations", [])),
             }
             ready_sends.append(Send("calculator_agent", calc_payload))
@@ -161,7 +187,9 @@ def route_from_executor(
                 "plan_index": i,
                 "op": op,
                 "query": task.get("query", ""),
-                "fetched_weather": state.get("fetched_weather", {}),
+                "fetched_weather": _filter_weather_by_deps(
+                    state.get("fetched_weather", {}), depends_on
+                ),
                 "calculations": list(state.get("calculations", [])),
             }
             ready_sends.append(Send("visualizer_agent", viz_payload))
