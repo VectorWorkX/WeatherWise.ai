@@ -3,14 +3,15 @@
 The visualizer thinks like a data journalist:
 1. Analyzes the data to find meaningful patterns
 2. Decides what visual story to tell and how many charts it needs
-3. Extracts data programmatically using run_calculation
+3. Optionally uses run_calculation for complex computations
 4. Generates complete ECharts option JSON via structured output
 5. Produces metrics, insights, and narratives that go beyond the question
 
-Two-phase pipeline:
-- Phase 1 (ReAct loop): extract and compute values from raw data via run_calculation
-- Phase 2 (Structured output): generate the complete VisualReport with ECharts options
+Pipeline:
+- Optional ReAct loop: LLM can use run_calculation if it needs computation
+- Structured output: LLM reads JSON data directly + generates VisualReport with ECharts options
 
+The LLM reads structured JSON data directly — no forced code execution for parsing.
 The frontend renders echarts_option directly with theme="dark".
 """
 
@@ -22,7 +23,7 @@ from typing import Any
 
 from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from weatherwise.logging import get_logger
 from weatherwise.retry import llm_retry
@@ -114,15 +115,17 @@ is enough, sometimes the data has multiple dimensions that each deserve their ow
 axis labels with units, and any other elements that help the viewer understand \
 the chart without reading surrounding text.
 
-DATA EXTRACTION:
-Use run_calculation to extract and compute values from the weather data. \
-The raw weather data is automatically available as the `data` variable in your code. \
-The data is structured JSON from the weather API — use `json.loads()` to parse it. \
-The `json` module is available in the sandbox. \
-NEVER copy or hardcode values from the conversation into your code — ALWAYS parse from `data`. \
-The `data` variable is a JSON string. Use `json.loads(data)` to get a dict keyed by location \
-(e.g., `all_data["phoenix_0"]`). Each value is the structured API response for that location. \
-Extract EVERY record in the dataset — verify your count matches the record_count in the metadata.
+DATA ACCESS:
+The weather data is provided in your prompt as structured JSON. You can read it directly — \
+the JSON is a dict keyed by location (e.g., data["phoenix_0"]), and each value is the \
+structured API response with metadata and records. \
+The `run_calculation` tool is available if you need to compute statistics (mean, std dev, etc.) \
+that are hard to do accurately in your head — but for simple visualization of existing values, \
+read the data directly and generate the chart. Do not write code just to parse JSON.
+
+ACCURACY: Before generating any chart, verify the data you are about to use. Count the records, \
+check the date range, and confirm the values match what is in the JSON. Do not assume or \
+approximate — if you are unsure about a value, use run_calculation to verify it.
 
 GENERATING CHARTS:
 For each chart section, generate a COMPLETE ECharts option JSON object in the \
@@ -142,8 +145,8 @@ If the data contains zero records or no values for a metric, do NOT create chart
 report the gap instead. Never fill in charts with general reference information or \
 training knowledge.
 
-DATA ACCURACY: Every data point from the extraction must appear in the chart series. \
-Use the extracted numbers exactly — do not round, approximate, or omit values. \
+DATA ACCURACY: Every data point from the dataset must appear in the chart series. \
+Use the numbers exactly as they are — do not round, approximate, or omit values. \
 The chart must reflect the complete dataset, not a summary of it.
 
 METRICS: Highlight key numbers as metric cards with units.
@@ -174,12 +177,9 @@ def _get_viz_llm() -> ChatAnthropic:
 async def visualizer_agent(state: VisualizePayload) -> dict[str, Any]:
     """Generate a visual story from fetched weather data.
 
-    Two-phase pipeline:
-    1. ReAct loop: extract and compute values via run_calculation
-    2. Structured output: generate VisualReport with ECharts options
-
-    Phase 2 uses clean context (only extracted data, not the full ReAct
-    conversation) to keep the structured output call focused and reliable.
+    The LLM reads structured JSON data directly. It can optionally use
+    run_calculation for complex computations, but simple visualization
+    queries go straight to the structured output step — no forced code execution.
     """
     query = state.get("query", "")
     plan_index = state["plan_index"]
@@ -189,8 +189,7 @@ async def visualizer_agent(state: VisualizePayload) -> dict[str, Any]:
     logger.info("visualizer_start", query=query, plan_index=plan_index)
 
     try:
-        # Build data context as a JSON dict keyed by location — no markers,
-        # json.loads(data) works on the first attempt every time
+        # Build data context as a JSON dict keyed by location
         data_dict: dict[str, Any] = {}
         for loc, weather_data in fetched_weather.items():
             if isinstance(weather_data, dict):
@@ -209,7 +208,7 @@ async def visualizer_agent(state: VisualizePayload) -> dict[str, Any]:
                 f"  - {c}" for c in calculations
             )
 
-        # Phase 1: ReAct loop — data extraction via run_calculation
+        # Optional ReAct loop — LLM can use run_calculation if needed
         llm = _get_viz_llm()
         _tools = [run_calculation]
         llm_with_tools = llm.bind_tools(_tools)
@@ -222,10 +221,10 @@ async def visualizer_agent(state: VisualizePayload) -> dict[str, Any]:
             ]),
             HumanMessage(
                 content=f"Create a visual report for this query: {query}\n\n"
-                        f"Available weather data:{data_summary}{calc_context}\n\n"
-                        f"Analyze the data, use run_calculation to extract values "
-                        f"programmatically, then generate the VisualReport with "
-                        f"complete ECharts option JSON for each chart section."
+                        f"Available weather data (JSON):\n{data_summary}{calc_context}\n\n"
+                        f"Read the data directly from the JSON above. Use run_calculation "
+                        f"only if you need to compute statistics. Then generate the "
+                        f"VisualReport with complete ECharts option JSON."
             ),
         ]
 
@@ -251,7 +250,7 @@ async def visualizer_agent(state: VisualizePayload) -> dict[str, Any]:
                     tool_call_id=tool_call["id"],
                 ))
 
-        # Collect the last tool results (extracted data) for clean context
+        # Collect any computation results from run_calculation (if used)
         last_tool_results = []
         for msg in reversed(messages):
             if isinstance(msg, ToolMessage):
@@ -259,11 +258,18 @@ async def visualizer_agent(state: VisualizePayload) -> dict[str, Any]:
             elif last_tool_results:
                 break
 
-        extracted_data = "\n\n".join(last_tool_results) if last_tool_results else "No data extracted."
-
-        # Phase 2: Structured output with CLEAN context
-        # Only system prompt + extracted data — avoids bloated ReAct conversation
+        # Structured output — pass raw JSON data directly + any computed values
         structured_llm = _get_viz_llm().with_structured_output(VisualReport)
+
+        structured_context = f"Query: {query}\n\nWeather data (JSON):\n{data_summary}"
+        if last_tool_results:
+            computed = "\n\n".join(last_tool_results)
+            structured_context += f"\n\nComputed values:\n{computed}"
+        structured_context += (
+            "\n\nGenerate the VisualReport with complete ECharts option JSON "
+            "for each chart section. Include metrics and insights. "
+            "Use every data point from the JSON — do not omit any."
+        )
 
         @llm_retry()
         async def _generate_report():
@@ -272,15 +278,15 @@ async def visualizer_agent(state: VisualizePayload) -> dict[str, Any]:
                     {"type": "text", "text": VISUALIZER_SYSTEM_PROMPT,
                      "cache_control": {"type": "ephemeral"}},
                 ]),
-                HumanMessage(
-                    content=f"Query: {query}\n\n"
-                            f"Extracted data:\n{extracted_data}\n\n"
-                            f"Generate the VisualReport with complete ECharts option JSON "
-                            f"for each chart section. Include metrics and insights."
-                ),
+                HumanMessage(content=structured_context),
             ])
 
-        report: VisualReport = await _generate_report()
+        # Retry once on ValidationError (malformed ECharts JSON on first attempt)
+        try:
+            report: VisualReport = await _generate_report()
+        except ValidationError:
+            logger.warning("visualizer_validation_retry", plan_index=plan_index)
+            report = await _generate_report()
 
         visual_report = {
             "title": report.title,
