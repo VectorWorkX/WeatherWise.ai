@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import json
 import math
 import operator
 import re
@@ -236,6 +237,7 @@ def run_calculation(code: str, data: str = "") -> str:
         "math": math,
         "statistics": statistics,
         "re": re,
+        "json": json,
         "data": data,
     }
     local_vars: dict = {}
