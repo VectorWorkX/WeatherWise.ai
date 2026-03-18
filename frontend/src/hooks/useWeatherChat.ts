@@ -48,6 +48,10 @@ export function useWeatherChat() {
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Track pending plan steps that haven't been matched to tool calls yet
   const pendingPlanStepIds = useRef<string[]>([]);
+  // Session ID for conversation continuity across reconnects
+  const sessionIdRef = useRef<string | null>(
+    sessionStorage.getItem("weatherwise_session"),
+  );
 
   const connect = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
@@ -85,8 +89,15 @@ export function useWeatherChat() {
 
   const handleWSMessage = useCallback((data: WSMessage) => {
     switch (data.type) {
-      case "connected":
+      case "connected": {
+        // Store session_id for conversation continuity across reconnects
+        const sid = data.session_id as string;
+        if (sid) {
+          sessionIdRef.current = sid;
+          sessionStorage.setItem("weatherwise_session", sid);
+        }
         break;
+      }
 
       case "intent":
         setMessages((prev) => {
@@ -316,9 +327,9 @@ export function useWeatherChat() {
       case "suggestions":
         setMessages((prev) => {
           const updated = [...prev];
-          // Attach suggestions to the last assistant message
+          // Attach to the last completed (non-streaming) assistant message
           for (let i = updated.length - 1; i >= 0; i--) {
-            if (updated[i].role === "assistant") {
+            if (updated[i].role === "assistant" && !updated[i].isStreaming) {
               updated[i] = {
                 ...updated[i],
                 suggestions: data.suggestions as string[],
@@ -333,9 +344,9 @@ export function useWeatherChat() {
       case "visual_report":
         setMessages((prev) => {
           const updated = [...prev];
-          // Attach visual report to the last assistant message
+          // Attach to the last completed (non-streaming) assistant message
           for (let i = updated.length - 1; i >= 0; i--) {
-            if (updated[i].role === "assistant") {
+            if (updated[i].role === "assistant" && !updated[i].isStreaming) {
               updated[i] = {
                 ...updated[i],
                 visualReport: data.data as VisualReportData,
@@ -396,8 +407,13 @@ export function useWeatherChat() {
       // Reset pending plan step tracker for new query
       pendingPlanStepIds.current = [];
 
+      const storedSession = sessionIdRef.current || sessionStorage.getItem("weatherwise_session");
       wsRef.current.send(
-        JSON.stringify({ type: "user_message", content }),
+        JSON.stringify({
+          type: "user_message",
+          content,
+          ...(storedSession ? { session_id: storedSession } : {}),
+        }),
       );
     },
     [],

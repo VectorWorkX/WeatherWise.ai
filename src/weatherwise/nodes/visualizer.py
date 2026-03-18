@@ -216,10 +216,14 @@ async def visualizer_agent(state: VisualizePayload) -> dict[str, Any]:
     logger.info("visualizer_start", query=query, plan_index=plan_index)
 
     try:
-        # Build data context for the LLM
+        # Build data context for the LLM — prefer raw_data (structured JSON)
+        # over raw_response (markdown text) for reliable parsing
         data_summary = ""
-        for loc, data in fetched_weather.items():
-            entry = data if isinstance(data, str) else data.get("raw_response", str(data))
+        for loc, weather_data in fetched_weather.items():
+            if isinstance(weather_data, dict):
+                entry = weather_data.get("raw_data") or weather_data.get("raw_response", str(weather_data))
+            else:
+                entry = str(weather_data)
             data_summary += f"\n--- {loc} ---\n{entry}"
 
         calc_context = ""
@@ -272,9 +276,14 @@ async def visualizer_agent(state: VisualizePayload) -> dict[str, Any]:
                     if tool_call["name"] == "run_calculation" and not args.get("data"):
                         args["data"] = accumulated_data
                     tool_result = tool_fn.invoke(args)
-                    # Append successful results so the next call can access them
+                    # Append successful results so the next call can access them.
+                    # All error prefixes from run_calculation in math_ops.py:
+                    #   "Code validation error:", "Code execution error:",
+                    #   "Code execution timed out", "Error: code must assign"
                     result_str = str(tool_result)
-                    if not result_str.startswith(("Error", "Code validation", "Code execution")):
+                    _error_prefixes = ("Code validation error", "Code execution error",
+                                       "Code execution timed out", "Error: code must assign")
+                    if not result_str.startswith(_error_prefixes):
                         accumulated_data = (
                             data_summary
                             + f"\n\n--- EXTRACTED DATA (from previous step) ---\n{result_str}"

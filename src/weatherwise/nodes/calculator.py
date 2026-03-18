@@ -87,8 +87,11 @@ async def calculator_agent(state: CalcPayload) -> dict[str, Any]:
         llm = _get_calc_llm().bind_tools(_calc_tools)
 
         data_summary = ""
-        for loc, data in fetched_weather.items():
-            entry = data if isinstance(data, str) else data.get("raw_response", str(data))
+        for loc, weather_data in fetched_weather.items():
+            if isinstance(weather_data, dict):
+                entry = weather_data.get("raw_data") or weather_data.get("raw_response", str(weather_data))
+            else:
+                entry = str(weather_data)
             data_summary += f"\n--- {loc} ---\n{entry}"
 
         # Include prior calculation results if this task depends on earlier calcs
@@ -121,17 +124,30 @@ async def calculator_agent(state: CalcPayload) -> dict[str, Any]:
 
             for tool_call in response.tool_calls:
                 tool_fn = _calc_tool_map.get(tool_call["name"])
-                tool_result = (
-                    tool_fn.invoke(tool_call["args"])
-                    if tool_fn
-                    else f"Unknown tool: {tool_call['name']}"
-                )
+                if tool_fn:
+                    args = dict(tool_call["args"])
+                    # Auto-inject weather data so the LLM doesn't need to
+                    # embed data in the code string
+                    if tool_call["name"] == "run_calculation" and not args.get("data"):
+                        args["data"] = data_summary
+                    tool_result = tool_fn.invoke(args)
+                else:
+                    tool_result = f"Unknown tool: {tool_call['name']}"
                 messages.append(ToolMessage(
                     content=str(tool_result),
                     tool_call_id=tool_call["id"],
                 ))
 
-        result = response.content if isinstance(response.content, str) else str(response.content)
+        # Extract text properly — response.content may be a list of content blocks
+        if isinstance(response.content, str):
+            result = response.content
+        elif isinstance(response.content, list):
+            result = "".join(
+                block.get("text", "") if isinstance(block, dict) else str(block)
+                for block in response.content
+            )
+        else:
+            result = str(response.content)
         logger.info("calculator_success", plan_index=plan_index)
 
     except Exception as e:
