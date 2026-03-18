@@ -1,17 +1,9 @@
 """Visualizer agent node — generates visual stories from weather data.
 
-The visualizer thinks like a data journalist:
-1. Analyzes the data to find meaningful patterns
-2. Decides what visual story to tell and how many charts it needs
-3. Optionally uses run_calculation for complex computations
-4. Generates complete ECharts option JSON via structured output
-5. Produces metrics, insights, and narratives that go beyond the question
+Single structured output call: the LLM reads structured JSON data directly
+and generates a complete VisualReport with ECharts options. No ReAct loop,
+no code execution for parsing — the LLM reads the data and builds the chart.
 
-Pipeline:
-- Optional ReAct loop: LLM can use run_calculation if it needs computation
-- Structured output: LLM reads JSON data directly + generates VisualReport with ECharts options
-
-The LLM reads structured JSON data directly — no forced code execution for parsing.
 The frontend renders echarts_option directly with theme="dark".
 """
 
@@ -22,13 +14,12 @@ import os
 from typing import Any
 
 from langchain_anthropic import ChatAnthropic
-from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from weatherwise.logging import get_logger
 from weatherwise.retry import llm_retry
 from weatherwise.state import VisualizePayload
-from weatherwise.tools.math_ops import run_calculation
 
 logger = get_logger(__name__)
 
@@ -44,7 +35,6 @@ def _parse_json_string(v: Any) -> Any:
     """
     if isinstance(v, str):
         try:
-            import json
             return json.loads(v)
         except (json.JSONDecodeError, ValueError):
             return v
@@ -106,9 +96,7 @@ THINK BEFORE YOU BUILD:
 1. What patterns exist in this data? Look for any meaningful structure — trends, \
 comparisons, distributions, anomalies, correlations, or anything else worth showing.
 2. What would a viewer learn from seeing this visually that they can't get from text?
-3. What data SUPPORTS the insight? Always show the underlying data, not just the summary. \
-Think: if someone asks for a single statistic, what surrounding data would make that \
-statistic meaningful in context? Show both or more if necessary.
+3. What data SUPPORTS the insight? Always show the underlying data, not just the summary.
 4. How many chart sections does this story need? Use your judgment — sometimes one chart \
 is enough, sometimes the data has multiple dimensions that each deserve their own view.
 5. What context makes each chart self-explanatory? Consider reference lines, annotations, \
@@ -116,16 +104,13 @@ axis labels with units, and any other elements that help the viewer understand \
 the chart without reading surrounding text.
 
 DATA ACCESS:
-The weather data is provided in your prompt as structured JSON. You can read it directly — \
-the JSON is a dict keyed by location (e.g., data["phoenix_0"]), and each value is the \
-structured API response with metadata and records. \
-The `run_calculation` tool is available if you need to compute statistics (mean, std dev, etc.) \
-that are hard to do accurately in your head — but for simple visualization of existing values, \
-read the data directly and generate the chart. Do not write code just to parse JSON.
+The weather data is provided as structured JSON in your prompt. Read it directly. \
+The JSON is a dict keyed by location (e.g., data["phoenix_0"]). Each value is the \
+structured API response with metadata and records.
 
 ACCURACY: Before generating any chart, verify the data you are about to use. Count the records, \
 check the date range, and confirm the values match what is in the JSON. Do not assume or \
-approximate — if you are unsure about a value, use run_calculation to verify it.
+approximate — if you are unsure about a value, double-check it in the JSON.
 
 GENERATING CHARTS:
 For each chart section, generate a COMPLETE ECharts option JSON object in the \
@@ -177,9 +162,9 @@ def _get_viz_llm() -> ChatAnthropic:
 async def visualizer_agent(state: VisualizePayload) -> dict[str, Any]:
     """Generate a visual story from fetched weather data.
 
-    The LLM reads structured JSON data directly. It can optionally use
-    run_calculation for complex computations, but simple visualization
-    queries go straight to the structured output step — no forced code execution.
+    Single structured output call: the LLM reads raw JSON data directly
+    and generates a VisualReport with complete ECharts options.
+    No ReAct loop, no code execution — the LLM reads and builds.
     """
     query = state.get("query", "")
     plan_index = state["plan_index"]
@@ -208,67 +193,16 @@ async def visualizer_agent(state: VisualizePayload) -> dict[str, Any]:
                 f"  - {c}" for c in calculations
             )
 
-        # Optional ReAct loop — LLM can use run_calculation if needed
-        llm = _get_viz_llm()
-        _tools = [run_calculation]
-        llm_with_tools = llm.bind_tools(_tools)
-        tool_map = {t.name: t for t in _tools}
-
-        messages: list = [
-            SystemMessage(content=[
-                {"type": "text", "text": VISUALIZER_SYSTEM_PROMPT,
-                 "cache_control": {"type": "ephemeral"}},
-            ]),
-            HumanMessage(
-                content=f"Create a visual report for this query: {query}\n\n"
-                        f"Available weather data (JSON):\n{data_summary}{calc_context}\n\n"
-                        f"Read the data directly from the JSON above. Use run_calculation "
-                        f"only if you need to compute statistics. Then generate the "
-                        f"VisualReport with complete ECharts option JSON."
-            ),
-        ]
-
-        max_iterations = 5
-        for _ in range(max_iterations):
-            response = await llm_with_tools.ainvoke(messages)
-            messages.append(response)
-
-            if not response.tool_calls:
-                break
-
-            for tool_call in response.tool_calls:
-                tool_fn = tool_map.get(tool_call["name"])
-                if tool_fn:
-                    args = dict(tool_call["args"])
-                    if tool_call["name"] == "run_calculation" and not args.get("data"):
-                        args["data"] = data_summary
-                    tool_result = tool_fn.invoke(args)
-                else:
-                    tool_result = f"Unknown tool: {tool_call['name']}"
-                messages.append(ToolMessage(
-                    content=str(tool_result),
-                    tool_call_id=tool_call["id"],
-                ))
-
-        # Collect any computation results from run_calculation (if used)
-        last_tool_results = []
-        for msg in reversed(messages):
-            if isinstance(msg, ToolMessage):
-                last_tool_results.insert(0, msg.content)
-            elif last_tool_results:
-                break
-
-        # Structured output — pass raw JSON data directly + any computed values
+        # Single structured output call — LLM reads JSON directly
         structured_llm = _get_viz_llm().with_structured_output(VisualReport)
 
-        structured_context = f"Query: {query}\n\nWeather data (JSON):\n{data_summary}"
-        if last_tool_results:
-            computed = "\n\n".join(last_tool_results)
-            structured_context += f"\n\nComputed values:\n{computed}"
-        structured_context += (
-            "\n\nGenerate the VisualReport with complete ECharts option JSON "
-            "for each chart section. Include metrics and insights. "
-            "Use every data point from the JSON — do not omit any."
+        structured_context = (
+            f"Query: {query}\n\n"
+            f"Weather data (JSON):\n{data_summary}"
+            f"{calc_context}\n\n"
+            f"Generate the VisualReport with complete ECharts option JSON "
+            f"for each chart section. Include metrics and insights. "
+            f"Use every data point from the JSON — do not omit any."
         )
 
         @llm_retry()
