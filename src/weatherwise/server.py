@@ -388,7 +388,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                     graph_state = await _graph.aget_state(run_config)
                     if graph_state.values:
                         viz = graph_state.values.get("visual_report", {})
-                        if viz and viz.get("sections"):
+                        if viz and (viz.get("sections") or viz.get("error")):
                             await websocket.send_json({
                                 "type": "visual_report",
                                 "data": _safe_json(viz),

@@ -139,4 +139,11 @@ async def synthesizer(state: WeatherState) -> dict[str, Any]:
             f"{data_block}\n\n(Synthesis error: {type(e).__name__}: {e})"
         )
 
-    return {"messages": [AIMessage(content=content)]}
+    # Strip >>> suggestion lines before saving to state — these are UI-only
+    # and would pollute conversation history for follow-up queries
+    clean_content = "\n".join(
+        line for line in content.split("\n")
+        if not line.strip().startswith(">>>")
+    ).rstrip()
+
+    return {"messages": [AIMessage(content=clean_content)]}

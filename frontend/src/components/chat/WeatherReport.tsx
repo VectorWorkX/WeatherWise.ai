@@ -31,7 +31,11 @@ interface Props {
 
 export default function WeatherReport({ report }: Props) {
   if (report.error && (!report.sections || report.sections.length === 0)) {
-    return null;
+    return (
+      <div className="mt-4 rounded-xl border border-white/[0.08] bg-white/[0.03] px-5 py-4">
+        <p className="text-sm text-neutral-400">Visualization could not be generated.</p>
+      </div>
+    );
   }
 
   return (
