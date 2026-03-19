@@ -128,11 +128,12 @@ If the user explicitly requests a specific chart type, use that type.
 CRITICAL: Your charts must be based entirely on the actual fetched data provided to you. \
 If the data contains zero records or no values for a metric, do NOT create charts for it — \
 report the gap instead. Never fill in charts with general reference information or \
-training knowledge.
+training knowledge. If the data is a map URL (not weather records with numeric values), \
+do not create ECharts charts — the map itself is the visualization.
 
-DATA ACCURACY: Every data point from the dataset must appear in the chart series. \
-Use the numbers exactly as they are — do not round, approximate, or omit values. \
-The chart must reflect the complete dataset, not a summary of it.
+DATA ACCURACY: Represent the complete dataset accurately. For small datasets, include every \
+data point. For large or multi-location datasets, summarize intelligently — use aggregates, \
+comparisons, or rankings to keep charts readable and within a reasonable size.
 
 METRICS: Highlight key numbers as metric cards with units.
 INSIGHTS: Provide meaningful analytical observations about what the data reveals.

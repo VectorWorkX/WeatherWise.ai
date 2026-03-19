@@ -36,6 +36,12 @@ Visual report handling:
   introduction that sets context for the chart. Do not repeat all the data in detail —
   the visual report covers that. Focus on the key takeaway.
 
+Map handling:
+- If the data includes a map URL, embed it in your response as a markdown image: \
+![Weather Map](url). Do not describe the map's technical details (resolution, layers, \
+coordinates) — the user can see the map. Instead, provide weather insights based on \
+any available weather data, or a brief contextual description of what the map shows.
+
 Follow-up suggestions:
 - At the very end of your response, add 2-3 short follow-up prompts the user might \
 naturally want to explore next. Base them on the data and conversation — not generic topics. \
