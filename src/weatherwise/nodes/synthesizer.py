@@ -76,15 +76,28 @@ async def synthesizer(state: WeatherState) -> dict[str, Any]:
     sections: list[str] = []
 
     weather = state.get("fetched_weather", {})
+    map_urls: list[str] = []
     if weather:
         lines = []
         for loc in sorted(weather.keys()):
             entry = weather[loc]
             if isinstance(entry, dict):
                 lines.append(f"  {entry.get('location', loc)}: {entry.get('raw_response', 'N/A')}")
+                # Extract map URLs from raw_data so synthesizer can embed them
+                raw_data = entry.get("raw_data", "")
+                if isinstance(raw_data, str) and "map_url" in raw_data:
+                    try:
+                        parsed = __import__("json").loads(raw_data)
+                        if isinstance(parsed, dict) and "map_url" in parsed:
+                            map_urls.append(parsed["map_url"])
+                    except (ValueError, TypeError):
+                        pass
             else:
                 lines.append(f"  {loc}: {entry}")
         sections.append("WEATHER DATA:\n" + "\n".join(lines))
+        if map_urls:
+            sections.append("MAP IMAGES (embed each as ![Weather Map](url) in your response):\n"
+                          + "\n".join(f"  {url}" for url in map_urls))
 
     knowledge = state.get("retrieved_knowledge", [])
     if knowledge:
