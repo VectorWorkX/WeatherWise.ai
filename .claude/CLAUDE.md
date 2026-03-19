@@ -6,9 +6,8 @@ WeatherWise.ai is a stateful multi-agent weather system using a Planner-Executor
 
 ## Tech Stack
 - **Orchestration:** LangGraph v0.2+ (StateGraph with Send-based fan-out)
-- **LLM:** Anthropic Claude (via `langchain-anthropic`)
-- **Classifier:** Claude Haiku (fast, cheap — for ambiguity detection)
-- **Weather Data:** Xweather MCP Server (`https://mcp.api.xweather.com/mcp`) via `langchain-mcp-adapters`
+- **LLM:** Anthropic Claude (via `langchain-anthropic`). Sonnet for fetcher, planner, synthesizer, visualizer. Haiku for supervisor, calculator.
+- **Weather Data:** Xweather MCP Server via `langchain-mcp-adapters`, Bearer auth header, tool filtering (`exclude_tags=tropical,lightning`)
 - **RAG:** Pinecone (serverless, free tier) + OpenAI `text-embedding-3-small` (1536 dims), summary-to-source multi-vector retrieval, parent content in vector metadata
 - **Document Parsing:** `unstructured` (`hi_res` strategy) for PDF text, tables, images — ingestion only
 - **Tools:** Xweather MCP tools (real-time), Pinecone RAG retrieval, sandboxed Python calculator (math + statistics), ECharts visualization (LLM generates complete ECharts JSON directly)
@@ -24,7 +23,11 @@ WeatherWise.ai is a stateful multi-agent weather system using a Planner-Executor
 - **Fan-in:** Workers loop back to executor; reducers merge parallel writes
 - **Dependency-aware execution:** Planner assigns `depends_on` indices to each task. Executor dispatches tasks whose dependencies are satisfied, producing dynamic parallel waves. No hardcoded phase ordering.
 - **Graph flow:** START -> supervisor -> planner -> executor -> [ready workers] -> executor -> [next wave] -> ... -> executor -> synthesizer -> END
-- **Visualization:** Visualizer agent runs as a plan task (op="visualize") with dependency-aware execution. Uses generative approach: LLM analyzes data, extracts values via run_calculation, and generates complete ECharts option JSON directly. No templates, no Pinecone search, no merging. Frontend renders echarts_option with theme="dark".
+- **Visualization:** Visualizer agent runs as a plan task (op="visualize") with dependency-aware execution. Single structured output call: LLM reads JSON data directly and generates complete ECharts option JSON via Pydantic VisualReport model. No ReAct loop, no code execution for chart generation. Frontend renders echarts_option with theme="dark".
+- **Data Pipeline:** Fetcher stores both `raw_data` (structured JSON from MCP) and `raw_response` (LLM text). Calculator/visualizer use `raw_data` (clean JSON); synthesizer uses `raw_response` (human-readable text).
+- **Session Persistence:** Frontend stores session_id in sessionStorage, sends with every message. Backend resumes checkpoint on reconnect.
+- **Thinking Timeline:** ChatGPT-style collapsible disclosure showing supervisor reasoning, planner summary, task progress. Dynamic header (Thinking → Searching → Analyzing → Writing).
+- **Follow-up Suggestions:** Synthesizer generates `>>>` prefixed suggestions, server extracts and sends as clickable chips. Suggestions stripped from checkpoint to keep conversation history clean.
 - **Async-native:** All nodes are `async def`, graph uses `ainvoke()`/`astream()`
 
 ## Key Files

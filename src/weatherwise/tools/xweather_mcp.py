@@ -39,7 +39,8 @@ def get_xweather_mcp_config() -> dict:
     return {
         "xweather": {
             "transport": "streamable_http",
-            "url": f"https://mcp.api.xweather.com/mcp?api_key={api_key}",
+            "url": "https://mcp.api.xweather.com/mcp?exclude_tags=tropical,lightning",
+            "headers": {"Authorization": f"Bearer {api_key}"},
         }
     }
 
