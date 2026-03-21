@@ -121,7 +121,10 @@ but do set text colors to light values (#ccc, #999) for readability.
 
 Make charts visually rich and professional. When comparing values with different \
 units or scales (for example, temperature and rainfall), use separate charts or \
-dual axes to keep both readable.
+dual axes to keep both readable. Ensure chart elements (title, legend, axis labels, \
+annotations) do not overlap — position the legend where it does not collide with \
+axis labels or other elements. Do not use custom tooltip formatters — ECharts \
+default tooltips are clean and always accurate. Just set trigger type (axis or item).
 
 If the user explicitly requests a specific chart type, use that type.
 

@@ -130,10 +130,21 @@ export default function WeatherReport({ report }: Props) {
   );
 }
 
+/** Remove custom tooltip formatters that contain unresolved ECharts template tokens. */
+function sanitizeTooltip(tooltip: unknown): unknown {
+  if (typeof tooltip !== "object" || tooltip === null) return tooltip;
+  const t = tooltip as Record<string, unknown>;
+  if (typeof t.formatter === "string" && /\{[abc]\d?\}/.test(t.formatter)) {
+    const { formatter: _, ...rest } = t;
+    return rest;
+  }
+  return t;
+}
+
 function ChartSection({ section }: { section: NonNullable<VisualReportData["sections"]>[number] }) {
   const raw = section.echarts_option as Record<string, unknown>;
   const rawGrid = typeof raw.grid === "object" && raw.grid !== null ? raw.grid as Record<string, unknown> : {};
-  const option = { ...raw, grid: { containLabel: true, ...rawGrid } };
+  const option = { ...raw, grid: { containLabel: true, ...rawGrid }, tooltip: sanitizeTooltip(raw.tooltip) };
 
   return (
     <div className="mb-4">
@@ -143,7 +154,7 @@ function ChartSection({ section }: { section: NonNullable<VisualReportData["sect
       {section.narrative && (
         <p className="text-xs text-neutral-500 mb-3">{section.narrative}</p>
       )}
-      <div className="rounded-xl bg-white/[0.02] border border-white/[0.06] p-4">
+      <div className="rounded-xl bg-white/[0.02] border border-white/[0.06] p-4 overflow-visible">
         <ChartErrorBoundary>
           <Suspense fallback={<div className="h-[400px] flex items-center justify-center text-neutral-500 text-sm">Loading chart...</div>}>
             <ReactECharts
