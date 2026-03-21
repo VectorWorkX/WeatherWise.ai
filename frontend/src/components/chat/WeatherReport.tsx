@@ -130,21 +130,10 @@ export default function WeatherReport({ report }: Props) {
   );
 }
 
-/** Remove custom tooltip formatters that contain unresolved ECharts template tokens. */
-function sanitizeTooltip(tooltip: unknown): unknown {
-  if (typeof tooltip !== "object" || tooltip === null) return tooltip;
-  const t = tooltip as Record<string, unknown>;
-  if (typeof t.formatter === "string" && /\{[abc]\d?\}/.test(t.formatter)) {
-    const { formatter: _, ...rest } = t;
-    return rest;
-  }
-  return t;
-}
-
 function ChartSection({ section }: { section: NonNullable<VisualReportData["sections"]>[number] }) {
   const raw = section.echarts_option as Record<string, unknown>;
   const rawGrid = typeof raw.grid === "object" && raw.grid !== null ? raw.grid as Record<string, unknown> : {};
-  const option = { ...raw, grid: { containLabel: true, ...rawGrid }, tooltip: sanitizeTooltip(raw.tooltip) };
+  const option = { ...raw, grid: { containLabel: true, ...rawGrid } };
 
   return (
     <div className="mb-4">
