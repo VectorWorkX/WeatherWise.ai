@@ -130,10 +130,53 @@ export default function WeatherReport({ report }: Props) {
   );
 }
 
+/** Sanitize an ECharts option so labels, titles, and legends never clip or overlap. */
+function sanitizeOption(raw: Record<string, unknown>): Record<string, unknown> {
+  const option = { ...raw };
+
+  // --- grid: enforce containLabel and reserve space for title/legend ---
+  // grid can be a single object OR an array (dual-axis charts use [{}, {}])
+  const hasTitle = Boolean(option.title);
+  const hasLegend = Boolean(option.legend);
+  // Minimum top margin so grid doesn't overlap title + legend
+  const minTop = hasTitle && hasLegend ? 70 : hasTitle || hasLegend ? 50 : 30;
+
+  const fixGrid = (g: Record<string, unknown>): Record<string, unknown> => {
+    const fixed: Record<string, unknown> = { ...g, containLabel: true };
+    // Only set top if the LLM didn't provide one, or provided one too small
+    const current = typeof fixed.top === "number" ? fixed.top : undefined;
+    if (current === undefined || current < minTop) {
+      fixed.top = minTop;
+    }
+    return fixed;
+  };
+
+  if (Array.isArray(option.grid)) {
+    option.grid = (option.grid as Record<string, unknown>[]).map(fixGrid);
+  } else {
+    const gridObj =
+      typeof option.grid === "object" && option.grid !== null
+        ? (option.grid as Record<string, unknown>)
+        : {};
+    option.grid = fixGrid(gridObj);
+  }
+
+  // --- pie/radar charts: shrink radius to leave room for labels ---
+  if (Array.isArray(option.series)) {
+    option.series = (option.series as Record<string, unknown>[]).map((s) => {
+      if (s.type === "pie" && !s.radius) {
+        return { ...s, radius: ["30%", "60%"], center: ["50%", "55%"] };
+      }
+      return s;
+    });
+  }
+
+  return option;
+}
+
 function ChartSection({ section }: { section: NonNullable<VisualReportData["sections"]>[number] }) {
   const raw = section.echarts_option as Record<string, unknown>;
-  const rawGrid = typeof raw.grid === "object" && raw.grid !== null ? raw.grid as Record<string, unknown> : {};
-  const option = { ...raw, grid: { containLabel: true, ...rawGrid } };
+  const option = sanitizeOption(raw);
 
   return (
     <div className="mb-4">
@@ -143,7 +186,7 @@ function ChartSection({ section }: { section: NonNullable<VisualReportData["sect
       {section.narrative && (
         <p className="text-xs text-neutral-500 mb-3">{section.narrative}</p>
       )}
-      <div className="rounded-xl bg-white/[0.02] border border-white/[0.06] p-4 overflow-visible">
+      <div className="rounded-xl bg-white/[0.02] border border-white/[0.06] p-4 overflow-hidden">
         <ChartErrorBoundary>
           <Suspense fallback={<div className="h-[400px] flex items-center justify-center text-neutral-500 text-sm">Loading chart...</div>}>
             <ReactECharts

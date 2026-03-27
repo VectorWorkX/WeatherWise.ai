@@ -37,7 +37,12 @@ Rules:
 - "fetch" = get weather-related data for a location. The "query" field tells the fetcher WHAT to look for (forecast, historical data, air quality, alerts, hourly conditions, raster maps, etc.). The fetcher has many tools and will pick the right one based on your query. When the user asks for a map, the fetcher handles it via the raster maps tool — do NOT create a separate "visualize" task for map requests, as the map itself is the visualization.
 - "research" = search the knowledge base for background info (port closures, historical events, climate science, etc.)
 - "calculate" = perform a math operation (anomalies, comparisons, unit conversions, statistics, etc.)
-- "visualize" = generate a visual chart or graph. Only include when the user explicitly asks to see, plot, graph, chart, or visualize something. Always pair with fetch tasks via depends_on.
+- "visualize" = generate a visual chart or graph. Only include when the user explicitly asks to see, plot, graph, chart, or visualize something. Always pair with fetch tasks via depends_on. \
+Think about what data the visualizer needs to build an insightful chart — not just the single \
+number the user asked about. For example, if the user asks to "visualize the average temperature \
+in Chicago", fetching just the mean is a single bar with one number — not a useful chart. Instead, \
+fetch the daily or hourly breakdown so the visualizer can show the trend WITH the mean, which \
+tells a real story. Always fetch the underlying data that supports the insight.
 - Use "depends_on" to express which tasks must finish first. The executor uses this to determine parallel execution waves automatically — tasks with satisfied dependencies run in parallel.
 - A "calculate" task that needs fetched data should list the relevant fetch task indices in "depends_on".
 - A "calculate" task that needs results from another calculation should list that calculation's index in "depends_on". It will receive those prior results.

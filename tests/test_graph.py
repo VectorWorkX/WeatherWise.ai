@@ -8,6 +8,8 @@ import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 
 from weatherwise.graph import build_graph, route_from_supervisor
+from weatherwise.nodes.supervisor import RouteDecision
+from weatherwise.nodes.planner import PlanTask, PlanOutput
 
 
 class TestRouteFromSupervisor:
@@ -39,69 +41,50 @@ class TestBuildGraph:
         graph = build_graph(checkpointer=False)
         assert graph is not None
 
+    def _mock_supervisor(self, mock_get_llm):
+        """Set up supervisor mock to return clear weather routing."""
+        decision = RouteDecision(
+            bucket="weather",
+            reasoning="Clear weather query",
+            needs_clarification=False,
+        )
+        structured_llm = MagicMock()
+        structured_llm.ainvoke = AsyncMock(return_value=decision)
+        mock_get_llm.return_value.with_structured_output.return_value = structured_llm
+
+    def _mock_planner(self, mock_get_llm, tasks: list[PlanTask]):
+        """Set up planner mock to return a plan with given tasks."""
+        plan_output = PlanOutput(
+            summary="Fetching weather data",
+            tasks=tasks,
+        )
+        structured_llm = MagicMock()
+        structured_llm.ainvoke = AsyncMock(return_value=plan_output)
+        mock_get_llm.return_value.with_structured_output.return_value = structured_llm
+
+    def _mock_synthesizer(self, mock_get_llm, content: str):
+        """Set up synthesizer mock to return given content."""
+        response = MagicMock()
+        response.content = content
+        mock_get_llm.return_value.ainvoke = AsyncMock(return_value=response)
+
     @pytest.mark.asyncio
     async def test_full_pipeline_mocked(self):
         """End-to-end test: supervisor -> planner -> executor -> fetcher -> synthesizer."""
-        supervisor_response = MagicMock()
-        supervisor_response.content = "CLEAR"
-
-        # Planner returns structured output
-        planner_response = MagicMock()
-        planner_response.tasks = [
-            MagicMock(
-                op="fetch",
-                location="Tokyo",
-                query="",
-                model_dump=lambda: {"op": "fetch", "location": "Tokyo", "query": ""},
-            )
+        tasks = [
+            PlanTask(op="fetch", location="Tokyo", query=""),
         ]
 
-        synth_response = MagicMock()
-        synth_response.content = "Tokyo is currently 25C with clear skies."
-
-        call_count = {"n": 0}
-
-        async def mock_ainvoke(messages, *args, **kwargs):
-            call_count["n"] += 1
-            if call_count["n"] == 1:
-                return supervisor_response
-            return synth_response
-
         with (
-            patch("weatherwise.nodes.supervisor.ChatAnthropic") as MockSuperLLM,
-            patch("weatherwise.nodes.planner.ChatAnthropic") as MockPlannerLLM,
-            patch("weatherwise.nodes.fetcher.MultiServerMCPClient") as MockMCP,
-            patch("weatherwise.nodes.fetcher.ChatAnthropic") as MockFetcherLLM,
-            patch("weatherwise.nodes.fetcher.create_react_agent") as MockReAct,
-            patch("weatherwise.nodes.synthesizer.ChatAnthropic") as MockSynthLLM,
+            patch("weatherwise.nodes.supervisor._get_supervisor_llm") as mock_super,
+            patch("weatherwise.nodes.planner._get_planner_llm") as mock_planner,
+            patch("weatherwise.nodes.fetcher.get_xweather_tools", new_callable=AsyncMock, return_value=[]),
+            patch("weatherwise.nodes.fetcher._invoke_fetch_loop", new_callable=AsyncMock, return_value=("Tokyo: 25C, clear, wind 10kph", '{"weather":{"tempC":25}}')),
+            patch("weatherwise.nodes.synthesizer._get_synthesizer_llm") as mock_synth,
         ):
-            # Supervisor
-            MockSuperLLM.return_value.ainvoke = AsyncMock(return_value=supervisor_response)
-
-            # Planner with structured output
-            structured_llm = MagicMock()
-            structured_llm.ainvoke = AsyncMock(return_value=planner_response)
-            MockPlannerLLM.return_value.with_structured_output = MagicMock(
-                return_value=structured_llm
-            )
-
-            # Fetcher MCP
-            mock_client = AsyncMock()
-            mock_client.get_tools.return_value = []
-            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_client.__aexit__ = AsyncMock(return_value=None)
-            MockMCP.return_value = mock_client
-
-            # Fetcher ReAct agent
-            fetch_result = {
-                "messages": [AIMessage(content="Tokyo: 25C, clear, wind 10kph")]
-            }
-            mock_agent = MagicMock()
-            mock_agent.ainvoke = AsyncMock(return_value=fetch_result)
-            MockReAct.return_value = mock_agent
-
-            # Synthesizer
-            MockSynthLLM.return_value.ainvoke = AsyncMock(return_value=synth_response)
+            self._mock_supervisor(mock_super)
+            self._mock_planner(mock_planner, tasks)
+            self._mock_synthesizer(mock_synth, "Tokyo is currently 25C with clear skies.")
 
             graph = build_graph(checkpointer="none")
             result = await graph.ainvoke(
@@ -116,58 +99,21 @@ class TestBuildGraph:
     @pytest.mark.asyncio
     async def test_fan_out_fan_in_merges_state(self):
         """Verify that parallel fetchers correctly merge their results."""
-        supervisor_response = MagicMock()
-        supervisor_response.content = "CLEAR"
-
-        planner_response = MagicMock()
-        planner_response.tasks = [
-            MagicMock(
-                op="fetch",
-                location="Tokyo",
-                query="",
-                model_dump=lambda: {"op": "fetch", "location": "Tokyo", "query": ""},
-            ),
-            MagicMock(
-                op="fetch",
-                location="London",
-                query="",
-                model_dump=lambda: {"op": "fetch", "location": "London", "query": ""},
-            ),
+        tasks = [
+            PlanTask(op="fetch", location="Tokyo", query=""),
+            PlanTask(op="fetch", location="London", query=""),
         ]
 
-        synth_response = MagicMock()
-        synth_response.content = "Tokyo is 25C, London is 11C."
-
         with (
-            patch("weatherwise.nodes.supervisor.ChatAnthropic") as MockSuperLLM,
-            patch("weatherwise.nodes.planner.ChatAnthropic") as MockPlannerLLM,
-            patch("weatherwise.nodes.fetcher.MultiServerMCPClient") as MockMCP,
-            patch("weatherwise.nodes.fetcher.ChatAnthropic"),
-            patch("weatherwise.nodes.fetcher.create_react_agent") as MockReAct,
-            patch("weatherwise.nodes.synthesizer.ChatAnthropic") as MockSynthLLM,
+            patch("weatherwise.nodes.supervisor._get_supervisor_llm") as mock_super,
+            patch("weatherwise.nodes.planner._get_planner_llm") as mock_planner,
+            patch("weatherwise.nodes.fetcher.get_xweather_tools", new_callable=AsyncMock, return_value=[]),
+            patch("weatherwise.nodes.fetcher._invoke_fetch_loop", new_callable=AsyncMock, return_value=("Weather data here", '{"weather":{"tempC":20}}')),
+            patch("weatherwise.nodes.synthesizer._get_synthesizer_llm") as mock_synth,
         ):
-            MockSuperLLM.return_value.ainvoke = AsyncMock(return_value=supervisor_response)
-
-            structured_llm = MagicMock()
-            structured_llm.ainvoke = AsyncMock(return_value=planner_response)
-            MockPlannerLLM.return_value.with_structured_output = MagicMock(
-                return_value=structured_llm
-            )
-
-            mock_client = AsyncMock()
-            mock_client.get_tools.return_value = []
-            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_client.__aexit__ = AsyncMock(return_value=None)
-            MockMCP.return_value = mock_client
-
-            fetch_result = {
-                "messages": [AIMessage(content="Weather data here")]
-            }
-            mock_agent = MagicMock()
-            mock_agent.ainvoke = AsyncMock(return_value=fetch_result)
-            MockReAct.return_value = mock_agent
-
-            MockSynthLLM.return_value.ainvoke = AsyncMock(return_value=synth_response)
+            self._mock_supervisor(mock_super)
+            self._mock_planner(mock_planner, tasks)
+            self._mock_synthesizer(mock_synth, "Tokyo is 25C, London is 11C.")
 
             graph = build_graph(checkpointer="none")
             result = await graph.ainvoke(
@@ -176,7 +122,7 @@ class TestBuildGraph:
 
             # Both cities should be in fetched_weather (merged by reducer)
             weather = result.get("fetched_weather", {})
-            assert "tokyo" in weather or "london" in weather
+            assert len(weather) >= 2
 
             # Both plan indices should be completed
             completed = result.get("completed_indices", [])
