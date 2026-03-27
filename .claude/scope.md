@@ -23,4 +23,4 @@
 ## Out of Scope
 - Authentication / multi-tenancy
 - Human-in-the-loop safety review for severe weather alerts
-- GitHub Actions CI/CD (Cloud Build used instead, manual trigger)
+- GitHub Actions CI/CD (Cloud Build trigger on push to main handles this)

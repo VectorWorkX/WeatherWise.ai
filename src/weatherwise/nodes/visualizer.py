@@ -189,6 +189,22 @@ async def visualizer_agent(state: VisualizePayload) -> dict[str, Any]:
                 data_dict[loc] = json.loads(raw) if isinstance(raw, str) else raw
             except (json.JSONDecodeError, ValueError):
                 data_dict[loc] = raw
+        # Check if we have any structured data to visualize.
+        # When fetchers fail, data_dict values are plain strings (error messages)
+        # instead of parsed dicts with weather records. If no entry parsed into
+        # a dict, there is nothing meaningful to chart.
+        has_structured_data = any(isinstance(v, dict) for v in data_dict.values())
+        if not has_structured_data and not calculations:
+            logger.warning(
+                "visualizer_skipped_no_data",
+                plan_index=plan_index,
+                data_types=[type(v).__name__ for v in data_dict.values()],
+            )
+            return {
+                "visual_report": {},
+                "completed_indices": [plan_index],
+            }
+
         data_summary = json.dumps(data_dict)
 
         calc_context = ""
