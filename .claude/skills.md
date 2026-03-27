@@ -16,7 +16,7 @@
 ## Node Implementation Pattern
 - Nodes receive full `WeatherState` (or custom payload if invoked via Send)
 - Nodes return a **partial dict** of state updates (only keys being changed)
-- Worker nodes invoked via Send receive a `TaskPayload` TypedDict, return updates to parent state keys
+- Worker nodes invoked via Send receive typed payloads (`FetchPayload`, `CalcPayload`, `VisualizePayload`), return updates to parent state keys
 
 ## Testing Approach
 - Unit test each node function in isolation with mock state

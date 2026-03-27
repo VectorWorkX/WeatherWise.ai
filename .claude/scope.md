@@ -1,26 +1,26 @@
 # Scope: WeatherWise.ai Multi-Agent Architecture
 
-## In Scope (v1)
-- Stateful multi-agent graph with 7 nodes (supervisor, planner, executor, fetcher, retriever, calculator, synthesizer)
+## Implemented
+- Stateful multi-agent graph with 8 nodes (supervisor, planner, executor, fetcher, retriever, calculator, visualizer, synthesizer)
 - Planner-Executor pattern with Send-based dynamic fan-out for parallel task execution
 - Fan-in via Annotated reducers on shared state fields
-- Supervisor node for ambiguity detection (fast model)
-- Planner node for query decomposition into independent sub-tasks
-- Mock tools: weather API, vector DB search, math operations
-- In-memory checkpointing (MemorySaver) for conversation persistence
-- Correct reducer definitions to prevent race conditions during parallel writes
-
-## In Scope (v2 — future)
-- Real Xweather MCP integration replacing mock weather tool
-- ChromaDB RAG pipeline replacing mock vector search
-- Dependent task chaining (e.g., math step that needs weather data first)
-- Human-in-the-loop safety review for severe weather alerts
-- Streaming support for real-time token output
-- Production checkpointer (SQLite/Redis)
-- Frontend integration
+- Supervisor node for intent classification and ambiguity detection (Sonnet)
+- Planner node for query decomposition into dependency-aware sub-tasks
+- Xweather MCP integration for real-time weather data
+- Pinecone RAG pipeline (serverless, free tier) with OpenAI embeddings
+- Dependency-aware task chaining (e.g., calculate step depends on fetch results)
+- Sandboxed Python calculator (AST-validated, signal-based timeout)
+- ECharts visualization via structured output (LLM generates complete chart JSON)
+- FastAPI + WebSocket server with SSE-like streaming
+- React frontend with thinking timeline, tool call visualization, follow-up suggestions
+- Multiple checkpointer backends (MemorySaver, AsyncSqliteSaver, AsyncRedisSaver)
+- Prompt caching on system prompts (Anthropic native cache_control)
+- Token-budgeted chat history trimming for LLM context management
+- PDF/image ingestion pipeline (scripts/build_knowledge.py) with Claude Vision
+- GCP Cloud Run deployment with Terraform-managed infrastructure
+- Cloud Build CI for Docker image builds
 
 ## Out of Scope
-- Frontend development (existing React app is separate)
-- PDF ingestion / embedding pipeline
-- Deployment / CI/CD
 - Authentication / multi-tenancy
+- Human-in-the-loop safety review for severe weather alerts
+- GitHub Actions CI/CD (Cloud Build used instead, manual trigger)

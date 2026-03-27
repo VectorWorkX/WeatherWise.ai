@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 from weatherwise.logging import get_logger
 from weatherwise.retry import llm_retry
 from weatherwise.state import WeatherState
+from weatherwise.utils import trim_chat_history
 
 logger = get_logger(__name__)
 
@@ -113,7 +114,7 @@ async def supervisor(state: WeatherState) -> dict[str, Any]:
                     {"type": "text", "text": f"{date_ctx}\n\n{SYSTEM_PROMPT}",
                      "cache_control": {"type": "ephemeral"}},
                 ])]
-                + state["messages"][-12:]
+                + trim_chat_history(state["messages"])
             )
 
         decision: RouteDecision = await _classify()

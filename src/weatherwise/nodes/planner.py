@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 from weatherwise.logging import get_logger
 from weatherwise.retry import llm_retry
 from weatherwise.state import WeatherState
+from weatherwise.utils import trim_chat_history
 
 logger = get_logger(__name__)
 
@@ -138,7 +139,7 @@ async def planner(state: WeatherState) -> dict[str, Any]:
                 [SystemMessage(content=[
                     {"type": "text", "text": resolved_prompt,
                      "cache_control": {"type": "ephemeral"}},
-                ])] + list(state["messages"][-12:])
+                ])] + trim_chat_history(state["messages"])
             )
 
         result = await _plan()

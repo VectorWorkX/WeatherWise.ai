@@ -1,4 +1,6 @@
-# WeatherWise.ai — Multi-Agent Architecture Discussion (Complete)
+# WeatherWise.ai — Multi-Agent Architecture Discussion (Historical)
+
+> **Note:** This document captures the design discussion that informed the current architecture. The actual implementation diverged from the "Final Architecture" described in Section 4. Key differences: the current codebase uses `supervisor`/`planner`/`executor` (not `intent_classifier`/`plan_generator`/`step_executor`+`collector`), worker nodes are `fetcher_agent`/`retriever_agent`/`calculator_agent`/`visualizer_agent` (not `forecast_agent`/`research_agent`/`analyst_agent`), state is a single `WeatherState` TypedDict (not `AgentState`+`AgentInternalState` with subgraph isolation), and there is no `safety_review` node or `Finding` model. See `CLAUDE.md` for the current architecture.
 
 ## Context
 This document captures the FULL architecture discussion for transforming WeatherWise.ai from a routed-specialist pattern to a true Plan-and-Execute multi-agent system. Includes all iterations, concerns, reviews, and the final design.
