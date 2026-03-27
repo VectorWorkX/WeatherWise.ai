@@ -210,7 +210,7 @@
 - [x] Verify health endpoint and frontend serving
 - [ ] Cloudflare DNS setup for weather-wise.ai
 - [ ] Rotate all API keys (exposed in git history)
-- [ ] GitHub Actions CI/CD
+- [x] CI/CD: Cloud Build trigger `deploy-on-push-to-main` (runs cloudbuild.yaml on push to main)
 
 ### Files modified (summary)
 | File | Change |

@@ -466,6 +466,6 @@ The system is deployed on GCP Cloud Run with Terraform-managed infrastructure:
 - **Vector DB:** Pinecone serverless (free tier, AWS us-east-1, cosine metric, 1536 dims) — migrated from ChromaDB. Parent content stored in vector metadata (eliminates docstore dependency at runtime).
 - **Secrets:** GCP Secret Manager (6 API keys), accessed via IAM by Cloud Run service account
 - **DNS:** Cloudflare (proxied CNAME to Cloud Run URL, Full strict SSL)
-- **CI/CD:** Cloud Build for Docker image builds (~2.5 min, ~$0.003/build)
+- **CI/CD:** Cloud Build trigger `deploy-on-push-to-main` — auto-builds and deploys on push to main (~2.5 min, ~$0.003/build)
 
 See [deployment-plan.md](deployment-plan.md) for full infrastructure details, costs, and Terraform configuration.

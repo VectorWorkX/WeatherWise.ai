@@ -10,7 +10,7 @@
 - [x] Cloud Run deployment — LIVE
 - [x] Lock CORS to production domain
 - [ ] Cloudflare DNS setup for weather-wise.ai
-- [ ] GitHub Actions CI/CD
+- [x] CI/CD: Cloud Build trigger `deploy-on-push-to-main` (auto-deploys on push to main)
 
 ### Deployment URLs
 - **Cloud Run:** `https://weatherwise-228097686588.us-central1.run.app`
@@ -216,5 +216,5 @@ After rotating: update `infra/terraform.tfvars` → `terraform apply` → redepl
 ## Future Enhancements
 
 - **Redis Cloud free tier** (30MB, has RediSearch) for cross-session persistence
-- **GitHub Actions CI/CD** — automate build+deploy on push to main
+- ~~GitHub Actions CI/CD~~ — handled by Cloud Build trigger `deploy-on-push-to-main`
 - **Cloud Run min_instances=1** if cold start UX is unacceptable (~$10/mo extra)
