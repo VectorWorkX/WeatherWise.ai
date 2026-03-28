@@ -425,6 +425,22 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
 # ---------------------------------------------------------------------------
 
 if os.environ.get("SERVE_FRONTEND") == "1":
+    from starlette.middleware import Middleware
+    from starlette.responses import Response
+
+    @app.middleware("http")
+    async def no_cache_html(request, call_next):
+        response: Response = await call_next(request)
+        # HTML pages (index.html) must not be cached — they reference
+        # content-hashed JS/CSS bundles that change on each deploy.
+        # Hashed assets (assets/index-*.js) are safe to cache long-term.
+        content_type = response.headers.get("content-type", "")
+        if "text/html" in content_type:
+            response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+            response.headers.pop("etag", None)
+            response.headers.pop("last-modified", None)
+        return response
+
     _frontend_dist = Path(os.environ.get("FRONTEND_DIST_DIR", "frontend/dist")).resolve()
     if not _frontend_dist.exists():
         # Fallback: relative to source file (dev mode)
