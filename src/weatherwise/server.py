@@ -425,25 +425,43 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
 # ---------------------------------------------------------------------------
 
 if os.environ.get("SERVE_FRONTEND") == "1":
-    from starlette.middleware import Middleware
-    from starlette.responses import Response
+    from starlette.responses import Response as StarletteResponse
+    from starlette.types import Scope, Receive, Send as ASGISend
 
-    @app.middleware("http")
-    async def no_cache_html(request, call_next):
-        response: Response = await call_next(request)
-        # HTML pages (index.html) must not be cached — they reference
-        # content-hashed JS/CSS bundles that change on each deploy.
-        # Hashed assets (assets/index-*.js) are safe to cache long-term.
-        content_type = response.headers.get("content-type", "")
-        if "text/html" in content_type:
-            response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-            response.headers.pop("etag", None)
-            response.headers.pop("last-modified", None)
-        return response
+    class NoCacheStaticFiles(StaticFiles):
+        """StaticFiles that prevents caching of HTML pages.
+
+        HTML files (index.html) reference content-hashed JS/CSS bundles
+        that change on each deploy. Without no-cache, CDNs and browsers
+        serve stale HTML that loads old bundles. Hashed assets are
+        unaffected — their filenames change when content changes.
+        """
+
+        async def __call__(self, scope: Scope, receive: Receive, send: ASGISend) -> None:
+            if scope["type"] == "http":
+                original_send = send
+
+                async def send_with_no_cache(message):
+                    if message.get("type") == "http.response.start":
+                        headers = dict(message.get("headers", []))
+                        content_type = headers.get(b"content-type", b"").decode()
+                        if "text/html" in content_type:
+                            # Filter out etag and last-modified, add no-cache
+                            filtered = [
+                                (k, v) for k, v in message["headers"]
+                                if k.lower() not in (b"etag", b"last-modified")
+                            ]
+                            filtered.append((b"cache-control", b"no-cache, no-store, must-revalidate"))
+                            message = {**message, "headers": filtered}
+                    await original_send(message)
+
+                await super().__call__(scope, receive, send_with_no_cache)
+            else:
+                await super().__call__(scope, receive, send)
 
     _frontend_dist = Path(os.environ.get("FRONTEND_DIST_DIR", "frontend/dist")).resolve()
     if not _frontend_dist.exists():
         # Fallback: relative to source file (dev mode)
         _frontend_dist = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
     if _frontend_dist.exists():
-        app.mount("/", StaticFiles(directory=str(_frontend_dist), html=True), name="frontend")
+        app.mount("/", NoCacheStaticFiles(directory=str(_frontend_dist), html=True), name="frontend")
