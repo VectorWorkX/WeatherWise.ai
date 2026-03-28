@@ -8,6 +8,14 @@ import ThinkingTimeline from "./ThinkingTimeline";
 import TypingIndicator from "./TypingIndicator";
 import WeatherReport from "./WeatherReport";
 
+/** Strip markdown image references that don't point to real URLs.
+ *  LLM sometimes generates ![title](sandboxed.png) or ![title]() for
+ *  charts that are rendered separately — these show as broken images. */
+function stripBrokenImages(text: string): string {
+  // Remove ![alt](src) where src is NOT an http/https URL
+  return text.replace(/!\[[^\]]*\]\((?!https?:\/\/)[^)]*\)/g, "");
+}
+
 interface Props {
   message: ChatMessage;
   onApproval?: (approved: boolean) => void;
@@ -60,13 +68,13 @@ export default function MessageBubble({ message, onApproval, onSuggestionClick }
                  on every token. Markdown is applied once streaming completes. */
               <div className="message-markdown text-[15px]">
                 <pre className="whitespace-pre-wrap font-[inherit] text-inherit leading-relaxed m-0 p-0 bg-transparent border-0">
-                  {message.content}
+                  {stripBrokenImages(message.content)}
                 </pre>
               </div>
             ) : (
               <div className="message-markdown text-[15px]">
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                  {message.content}
+                  {stripBrokenImages(message.content)}
                 </ReactMarkdown>
               </div>
             )}

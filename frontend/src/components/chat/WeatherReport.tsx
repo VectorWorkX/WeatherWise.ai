@@ -78,32 +78,12 @@ export default function WeatherReport({ report }: Props) {
         </div>
       )}
 
-      {/* Chart Sections */}
+      {/* Chart Sections — stacked vertically, each with its own narrative */}
       {report.sections && report.sections.length > 0 && (
-        <div className="px-5 pb-4">
-          {/* Group by priority: priority 1 = full width, priority 2 = side by side */}
-          {(() => {
-            const fullWidth = report.sections!.filter((s) => s.priority === 1);
-            const halfWidth = report.sections!.filter((s) => s.priority !== 1);
-
-            return (
-              <>
-                {/* Full-width charts */}
-                {fullWidth.map((section, i) => (
-                  <ChartSection key={`full-${i}`} section={section} />
-                ))}
-
-                {/* Side-by-side charts */}
-                {halfWidth.length > 0 && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {halfWidth.map((section, i) => (
-                      <ChartSection key={`half-${i}`} section={section} />
-                    ))}
-                  </div>
-                )}
-              </>
-            );
-          })()}
+        <div className="px-5 pb-4 space-y-4">
+          {report.sections.map((section, i) => (
+            <ChartSection key={i} section={section} />
+          ))}
         </div>
       )}
 
@@ -143,10 +123,15 @@ function sanitizeOption(raw: Record<string, unknown>): Record<string, unknown> {
 
   const fixGrid = (g: Record<string, unknown>): Record<string, unknown> => {
     const fixed: Record<string, unknown> = { ...g, containLabel: true };
-    // Only set top if the LLM didn't provide one, or provided one too small
-    const current = typeof fixed.top === "number" ? fixed.top : undefined;
-    if (current === undefined || current < minTop) {
+    // Reserve space above for title + legend
+    const curTop = typeof fixed.top === "number" ? fixed.top : undefined;
+    if (curTop === undefined || curTop < minTop) {
       fixed.top = minTop;
+    }
+    // Reserve space on right for markLine labels / annotations that extend past the axis
+    const curRight = typeof fixed.right === "number" ? fixed.right : undefined;
+    if (curRight === undefined || curRight < 30) {
+      fixed.right = 30;
     }
     return fixed;
   };
