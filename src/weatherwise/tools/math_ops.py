@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import ast
+import collections
+import datetime
 import json
 import math
 import operator
@@ -187,13 +189,13 @@ def run_calculation(code: str, data: str = "") -> str:
     - Multi-step calculations that are easier to express as code
     - Any math beyond simple arithmetic
 
-    The code runs in a restricted environment with only `math` and `statistics`
-    modules available. You MUST assign your final answer to a variable called
-    `result`. The `data` parameter is available as the variable `data` in your code.
+    The code runs in a restricted environment. You MUST assign your final
+    answer to a variable called `result`. The `data` parameter is available
+    as the variable `data` in your code.
 
     Args:
         code: Python code snippet. Must assign the final answer to `result`.
-              Available modules: math, statistics.
+              Available modules: math, statistics, json, re, datetime, collections.
               Available builtins: abs, round, min, max, sum, len, sorted,
               enumerate, zip, range, list, dict, set, tuple, float, int, str, bool.
         data: Optional data string to process (available as `data` variable in code).
@@ -238,6 +240,8 @@ def run_calculation(code: str, data: str = "") -> str:
         "statistics": statistics,
         "re": re,
         "json": json,
+        "datetime": datetime,
+        "collections": collections,
         "data": data,
     }
     local_vars: dict = {}
