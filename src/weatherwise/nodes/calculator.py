@@ -35,7 +35,7 @@ CRITICAL RULES:
 ALWAYS parse it with `json.loads()`. NEVER copy or hardcode values from the conversation \
 into your code — you WILL make errors. Parse everything from the `data` variable.
 - Your code MUST assign the final answer to a variable called `result`.
-- Available in the sandbox: `json`, `math`, `statistics`, `re` modules and standard builtins.
+- Available in the sandbox: `json`, `math`, `statistics`, `re`, `datetime`, `collections` modules and standard builtins.
 - The `data` variable is a JSON string. Use `json.loads(data)` to get a dict keyed by location \
 (e.g., `all_data["phoenix_0"]`). Each value is the structured API response for that location.
 - For simple arithmetic with 2-3 known numbers, use compute_expression instead (faster)."""
