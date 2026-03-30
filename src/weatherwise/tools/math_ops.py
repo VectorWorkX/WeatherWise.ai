@@ -258,6 +258,12 @@ def run_calculation(code: str, data: str = "") -> str:
         _exec_with_timeout(code, restricted_globals, local_vars)
     except TimeoutError:
         return f"Code execution timed out after {_EXEC_TIMEOUT} seconds"
+    except NameError as e:
+        return (
+            f"Code execution error: {e}. "
+            f"Each run_calculation call is isolated — variables and functions "
+            f"from previous calls do not persist. Write ALL logic in a single call."
+        )
     except Exception as e:
         return f"Code execution error: {type(e).__name__}: {e}"
 
