@@ -32,9 +32,7 @@ Rules:
 - Only call a second tool if the first tool's result is clearly missing critical data the user needs
 - When dates are mentioned, use them exactly. When no dates are given and the query is about current conditions, use today's date ({today_date})
 - If a tool call fails or returns zero records, try a different tool that could provide similar information
-- Return the raw data you receive — do not interpret or summarize it
-- Do NOT use a 'fields' parameter to filter the response. Return all available fields — \
-downstream calculations may need fields not explicitly mentioned in the request."""
+- Return the raw data you receive — do not interpret or summarize it"""
 
 # Cached LLM instance — avoids re-creating HTTP clients on every parallel fetch
 _fetcher_llm: ChatAnthropic | None = None
@@ -119,7 +117,10 @@ async def _invoke_fetch_loop(tools: list, prompt: str) -> tuple[str, str]:
                 tool_result = f"Unknown tool: {tool_call['name']}"
             else:
                 try:
-                    tool_result = await tool_fn.ainvoke(tool_call["args"])
+                    # Strip 'fields' — always return all available data points
+                    # so downstream calculators have every field they may need
+                    args = {k: v for k, v in tool_call["args"].items() if k != "fields"}
+                    tool_result = await tool_fn.ainvoke(args)
                 except Exception as e:
                     tool_result = f"Tool execution error: {type(e).__name__}: {e}"
 
