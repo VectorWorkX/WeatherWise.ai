@@ -6,7 +6,7 @@ WeatherWise.ai is a stateful multi-agent weather system using a Planner-Executor
 
 ## Tech Stack
 - **Orchestration:** LangGraph v0.2+ (StateGraph with Send-based fan-out)
-- **LLM:** Anthropic Claude (via `langchain-anthropic`). Sonnet for supervisor, fetcher, planner, synthesizer, visualizer. Haiku for calculator.
+- **LLM:** Anthropic Claude (via `langchain-anthropic`). Sonnet for all agents (supervisor, fetcher, planner, calculator, synthesizer, visualizer).
 - **Weather Data:** Xweather MCP Server via `langchain-mcp-adapters`, Bearer auth header, tool filtering (`exclude_tags=tropical,lightning`)
 - **RAG:** Pinecone (serverless, free tier) + OpenAI `text-embedding-3-small` (1536 dims), summary-to-source multi-vector retrieval, parent content in vector metadata
 - **Document Parsing:** `unstructured` (`hi_res` strategy) for PDF text, tables, images — ingestion only

@@ -234,6 +234,10 @@ def run_calculation(code: str, data: str = "") -> str:
         return f"Code validation error: {validation_error}"
 
     # Build restricted execution environment
+    # Modules are available both as modules (datetime.datetime) and as direct
+    # names (defaultdict, timedelta) because LLMs write "from X import Y"
+    # which gets stripped by _strip_imports — the direct names ensure the
+    # code still works after stripping.
     restricted_globals = {
         "__builtins__": _SAFE_BUILTINS,
         "math": math,
@@ -241,7 +245,11 @@ def run_calculation(code: str, data: str = "") -> str:
         "re": re,
         "json": json,
         "datetime": datetime,
+        "timedelta": datetime.timedelta,
         "collections": collections,
+        "defaultdict": collections.defaultdict,
+        "Counter": collections.Counter,
+        "OrderedDict": collections.OrderedDict,
         "data": data,
     }
     local_vars: dict = {}
@@ -258,4 +266,11 @@ def run_calculation(code: str, data: str = "") -> str:
 
     result = local_vars["result"]
     logger.info("run_calculation_success", result_type=type(result).__name__)
+    # Return JSON for dict/list so downstream calculators can parse with json.loads()
+    # instead of failing on Python repr strings (single quotes, True vs true)
+    if isinstance(result, (dict, list)):
+        try:
+            return json.dumps(result)
+        except (TypeError, ValueError):
+            return str(result)
     return str(result)
