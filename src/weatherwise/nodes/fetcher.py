@@ -32,7 +32,9 @@ Rules:
 - Only call a second tool if the first tool's result is clearly missing critical data the user needs
 - When dates are mentioned, use them exactly. When no dates are given and the query is about current conditions, use today's date ({today_date})
 - If a tool call fails or returns zero records, try a different tool that could provide similar information
-- Return the raw data you receive — do not interpret or summarize it"""
+- Return the raw data you receive — do not interpret or summarize it
+- Do NOT use a 'fields' parameter to filter the response. Return all available fields — \
+downstream calculations may need fields not explicitly mentioned in the request."""
 
 # Cached LLM instance — avoids re-creating HTTP clients on every parallel fetch
 _fetcher_llm: ChatAnthropic | None = None

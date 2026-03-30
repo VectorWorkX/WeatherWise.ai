@@ -36,7 +36,10 @@ Each task has these fields:
 Rules:
 - "fetch" = get weather-related data for a location. The "query" field tells the fetcher WHAT to look for (forecast, historical data, air quality, alerts, hourly conditions, raster maps, etc.). The fetcher has many tools and will pick the right one based on your query. When the user asks for a map, the fetcher handles it via the raster maps tool — do NOT create a separate "visualize" task for map requests, as the map itself is the visualization.
 - "research" = search the knowledge base for background info (port closures, historical events, climate science, etc.)
-- "calculate" = perform a math operation (anomalies, comparisons, unit conversions, statistics, etc.)
+- "calculate" = perform a math operation (anomalies, comparisons, unit conversions, statistics, etc.). \
+When a query involves a multi-step analysis on the same dataset (compute X, then use X to find Y, \
+then cross-reference), create ONE calculate task — the calculator can handle multi-step logic in a \
+single code block. Only split into separate calculate tasks when each step uses DIFFERENT data sources.
 - "visualize" = generate a visual chart or graph. Only include when the user explicitly asks to see, plot, graph, chart, or visualize something. Always pair with fetch tasks via depends_on. \
 Think about what data the visualizer needs to build an insightful chart — not just the single \
 number the user asked about. For example, if the user asks to "visualize the average temperature \
