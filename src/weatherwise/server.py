@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import uuid
@@ -70,10 +71,16 @@ async def _prewarm_caches() -> None:
     Called during lifespan before the server accepts requests.
     Failures are logged but do not block startup — the fetcher's
     own retry logic will handle MCP negotiation on first use.
+
+    Has an overall timeout to prevent blocking the lifespan if the
+    MCP server is unreachable. Cloud Run's startup probe has a ~35s
+    window; we must complete well within that.
     """
     try:
-        tools = await get_xweather_tools()
+        tools = await asyncio.wait_for(get_xweather_tools(), timeout=20)
         logger.info("mcp_cache_prewarmed", tool_count=len(tools))
+    except asyncio.TimeoutError:
+        logger.warning("mcp_cache_prewarm_timeout", timeout=20)
     except Exception as e:
         logger.warning("mcp_cache_prewarm_failed", error=str(e))
 
