@@ -25,7 +25,7 @@
 
 ## Phase 3.5: Xweather MCP Integration
 - [x] Create Xweather MCP client config (`tools/xweather_mcp.py`)
-- [x] Replace mock fetcher with MCP-backed ReAct agent (`nodes/fetcher.py`)
+- [x] Replace mock fetcher with MCP-backed manual tool-calling loop (`nodes/fetcher.py`)
 - [x] Add `langchain-mcp-adapters` dependency
 - [x] Update env config with Xweather credentials
 - [x] Remove mock weather API (replaced by Xweather MCP)
@@ -199,7 +199,7 @@
 - [x] Update `build_knowledge.py` for Pinecone upserts
 - [x] Update `verify_retrieval.py` with Pinecone stats function
 - [x] Remove `_get_index_stats()` pre-check (save ~200-400ms/query)
-- [x] Switch planner LLM from Sonnet to Haiku (save ~2-3s/query)
+- [x] ~Switch planner LLM from Sonnet to Haiku~ (reverted — planner currently uses Sonnet: `claude-sonnet-4-20250514`)
 
 ## Phase 8: GCP Deployment
 - [x] Create multi-stage Dockerfile (Node frontend + Python backend)
@@ -210,7 +210,7 @@
 - [x] Verify health endpoint and frontend serving
 - [ ] Cloudflare DNS setup for weather-wise.ai
 - [ ] Rotate all API keys (exposed in git history)
-- [ ] GitHub Actions CI/CD
+- [x] CI/CD: Cloud Build trigger `deploy-on-push-to-main` (runs cloudbuild.yaml on push to main)
 
 ### Files modified (summary)
 | File | Change |

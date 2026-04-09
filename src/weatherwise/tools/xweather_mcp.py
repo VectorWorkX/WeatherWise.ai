@@ -68,14 +68,35 @@ async def get_xweather_tools() -> list:
         # Retry MCP connection up to 3 times with backoff.
         # Xweather's MCP server occasionally returns transient errors
         # (e.g., application/octet-stream instead of JSON).
+        # Per-attempt timeout prevents hanging indefinitely when the MCP
+        # server accepts the connection but never responds. Without this,
+        # client.get_tools() can block forever, causing Cloud Run startup
+        # probe failures (the lifespan never completes).
+        _MCP_CONNECT_TIMEOUT = 15  # seconds per attempt
+
         last_err: Exception | None = None
         for attempt in range(3):
             try:
+                # MultiServerMCPClient is a lightweight config holder — each
+                # tool invocation creates a short-lived MCP session internally.
+                # No persistent connections are held by the client object.
                 client = MultiServerMCPClient(config)
-                _tool_cache = await client.get_tools()
+                _tool_cache = await asyncio.wait_for(
+                    client.get_tools(),
+                    timeout=_MCP_CONNECT_TIMEOUT,
+                )
                 _tool_cache_time = time.monotonic()
                 logger.info("xweather_tools_cached", tool_count=len(_tool_cache))
                 return _tool_cache
+            except asyncio.TimeoutError:
+                last_err = TimeoutError(
+                    f"MCP tool loading timed out after {_MCP_CONNECT_TIMEOUT}s"
+                )
+                logger.warning(
+                    "xweather_tools_timeout",
+                    attempt=attempt + 1,
+                    timeout=_MCP_CONNECT_TIMEOUT,
+                )
             except Exception as e:
                 last_err = e
                 logger.warning(
@@ -83,8 +104,8 @@ async def get_xweather_tools() -> list:
                     attempt=attempt + 1,
                     error=str(e),
                 )
-                if attempt < 2:
-                    await asyncio.sleep(1.5 * (attempt + 1))
+            if attempt < 2:
+                await asyncio.sleep(1.5 * (attempt + 1))
 
         raise last_err  # type: ignore[misc]
 

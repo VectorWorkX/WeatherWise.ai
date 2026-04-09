@@ -8,6 +8,7 @@ This module must NOT import any ingestion code (unstructured, etc.).
 from __future__ import annotations
 
 import os
+import threading
 from typing import Any
 
 # Relevance threshold — Pinecone cosine returns similarity (0–1), higher = more relevant
@@ -16,12 +17,23 @@ TOP_K_CANDIDATES = 8
 TOP_K_RESULTS = 5
 
 _vectorstore_cache = None
+_vectorstore_lock = threading.Lock()
 
 
 def _get_vectorstore():
-    """Return a cached Pinecone vectorstore for similarity search."""
+    """Return a cached Pinecone vectorstore for similarity search.
+
+    Uses a threading.Lock for double-checked locking — prevents redundant
+    PineconeVectorStore creation when multiple retriever tasks call this
+    concurrently via asyncio.to_thread.
+    """
     global _vectorstore_cache
-    if _vectorstore_cache is None:
+    if _vectorstore_cache is not None:
+        return _vectorstore_cache
+    with _vectorstore_lock:
+        # Double-check after acquiring lock
+        if _vectorstore_cache is not None:
+            return _vectorstore_cache
         from langchain_openai import OpenAIEmbeddings
         from langchain_pinecone import PineconeVectorStore
 

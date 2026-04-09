@@ -37,7 +37,8 @@ def _filter_weather_by_deps(
 
     Keys in fetched_weather are like "delhi_0", "sanjose_1" — the trailing
     number is the plan_index. Only include entries whose plan_index is in
-    the depends_on list. Falls back to full dict if no matches found.
+    the depends_on list. Returns empty dict if no matches found — this
+    signals to downstream nodes that their dependencies produced no data.
     """
     if not depends_on:
         return fetched_weather
@@ -50,7 +51,7 @@ def _filter_weather_by_deps(
             if int(parts[1]) in dep_set:
                 filtered[key] = value
 
-    return filtered if filtered else fetched_weather
+    return filtered
 
 
 async def executor(state: WeatherState) -> dict[str, Any]:

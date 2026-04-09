@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 from weatherwise.logging import get_logger
 from weatherwise.retry import llm_retry
 from weatherwise.state import WeatherState
+from weatherwise.utils import trim_chat_history
 
 logger = get_logger(__name__)
 
@@ -41,12 +42,13 @@ Analyze the user's message, classify it, and check if it's specific enough to pr
   - **greeting**: Introduce yourself as WeatherWise, a professional AI weather intelligence system. Briefly describe your capabilities. Be friendly and invite the user to ask a weather question.
   - **off_topic**: Politely explain that you specialize in weather and redirect the user.
 - For "weather" queries, check if the query is specific enough to fetch useful data. \
-If a weather query is too vague or ambiguous to produce useful results — a broad region \
-instead of a specific city, a location name that maps to multiple places with no way to \
-determine which one from context, or critical missing details — set needs_clarification \
-to true and write a brief, helpful question in the response field asking the user to be \
-more specific. Only do this when you genuinely cannot determine what the user means from \
-context. If the intent is reasonably clear, proceed normally.
+Set needs_clarification to true ONLY when the query is genuinely impossible to act on — \
+for example, a location name that maps to multiple places with no way to determine which \
+one from context (e.g., "Springfield" with no state), or a query with no location at all \
+when one is clearly needed. Do NOT ask for clarification when the user mentions a region, \
+area, or geographic feature (e.g., "the Great Lakes", "the Gulf Coast", "Pacific Northwest", \
+"Michigan shoreline") — the planner can select representative cities for regional queries. \
+When in doubt, proceed rather than asking — the system handles broad queries well.
 """
 
 _DIRECT_RESPONSE_BUCKETS = {"greeting", "off_topic"}
@@ -113,7 +115,7 @@ async def supervisor(state: WeatherState) -> dict[str, Any]:
                     {"type": "text", "text": f"{date_ctx}\n\n{SYSTEM_PROMPT}",
                      "cache_control": {"type": "ephemeral"}},
                 ])]
-                + state["messages"][-12:]
+                + trim_chat_history(state["messages"])
             )
 
         decision: RouteDecision = await _classify()

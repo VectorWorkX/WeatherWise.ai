@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import uuid
@@ -70,10 +71,16 @@ async def _prewarm_caches() -> None:
     Called during lifespan before the server accepts requests.
     Failures are logged but do not block startup — the fetcher's
     own retry logic will handle MCP negotiation on first use.
+
+    Has an overall timeout to prevent blocking the lifespan if the
+    MCP server is unreachable. Cloud Run's startup probe has a ~35s
+    window; we must complete well within that.
     """
     try:
-        tools = await get_xweather_tools()
+        tools = await asyncio.wait_for(get_xweather_tools(), timeout=20)
         logger.info("mcp_cache_prewarmed", tool_count=len(tools))
+    except asyncio.TimeoutError:
+        logger.warning("mcp_cache_prewarm_timeout", timeout=20)
     except Exception as e:
         logger.warning("mcp_cache_prewarm_failed", error=str(e))
 
@@ -425,9 +432,43 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
 # ---------------------------------------------------------------------------
 
 if os.environ.get("SERVE_FRONTEND") == "1":
+    from starlette.responses import Response as StarletteResponse
+    from starlette.types import Scope, Receive, Send as ASGISend
+
+    class NoCacheStaticFiles(StaticFiles):
+        """StaticFiles that prevents caching of HTML pages.
+
+        HTML files (index.html) reference content-hashed JS/CSS bundles
+        that change on each deploy. Without no-cache, CDNs and browsers
+        serve stale HTML that loads old bundles. Hashed assets are
+        unaffected — their filenames change when content changes.
+        """
+
+        async def __call__(self, scope: Scope, receive: Receive, send: ASGISend) -> None:
+            if scope["type"] == "http":
+                original_send = send
+
+                async def send_with_no_cache(message):
+                    if message.get("type") == "http.response.start":
+                        headers = dict(message.get("headers", []))
+                        content_type = headers.get(b"content-type", b"").decode()
+                        if "text/html" in content_type:
+                            # Filter out etag and last-modified, add no-cache
+                            filtered = [
+                                (k, v) for k, v in message["headers"]
+                                if k.lower() not in (b"etag", b"last-modified")
+                            ]
+                            filtered.append((b"cache-control", b"no-cache, no-store, must-revalidate"))
+                            message = {**message, "headers": filtered}
+                    await original_send(message)
+
+                await super().__call__(scope, receive, send_with_no_cache)
+            else:
+                await super().__call__(scope, receive, send)
+
     _frontend_dist = Path(os.environ.get("FRONTEND_DIST_DIR", "frontend/dist")).resolve()
     if not _frontend_dist.exists():
         # Fallback: relative to source file (dev mode)
         _frontend_dist = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
     if _frontend_dist.exists():
-        app.mount("/", StaticFiles(directory=str(_frontend_dist), html=True), name="frontend")
+        app.mount("/", NoCacheStaticFiles(directory=str(_frontend_dist), html=True), name="frontend")

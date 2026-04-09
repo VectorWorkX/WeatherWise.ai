@@ -103,12 +103,12 @@ class TestRouteFromExecutor:
         assert "retriever_agent" in nodes
 
     def test_calculator_receives_fetched_weather(self):
-        """Calculator payload should include fetched_weather."""
-        weather = {"tokyo": {"location": "Tokyo", "raw_response": "25C"}}
+        """Calculator payload should include fetched_weather filtered by dependency."""
+        weather = {"tokyo_0": {"location": "Tokyo", "raw_response": "25C"}}
         state = self._make_state(
             plan=[
                 {"op": "fetch", "location": "Tokyo", "query": ""},
-                {"op": "calculate", "location": "Tokyo", "query": "anomaly"},
+                {"op": "calculate", "location": "Tokyo", "query": "anomaly", "depends_on": [0]},
             ],
             completed=[0],
             fetched_weather=weather,

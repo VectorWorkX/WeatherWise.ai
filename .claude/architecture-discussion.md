@@ -1,4 +1,6 @@
-# WeatherWise.ai — Multi-Agent Architecture Discussion (Complete)
+# WeatherWise.ai — Multi-Agent Architecture Discussion (Historical)
+
+> **Note:** This document captures the design discussion that informed the current architecture. The actual implementation diverged from the "Final Architecture" described in Section 4. Key differences: the current codebase uses `supervisor`/`planner`/`executor` (not `intent_classifier`/`plan_generator`/`step_executor`+`collector`), worker nodes are `fetcher_agent`/`retriever_agent`/`calculator_agent`/`visualizer_agent` (not `forecast_agent`/`research_agent`/`analyst_agent`), state is a single `WeatherState` TypedDict (not `AgentState`+`AgentInternalState` with subgraph isolation), and there is no `safety_review` node or `Finding` model. See `CLAUDE.md` for the current architecture.
 
 ## Context
 This document captures the FULL architecture discussion for transforming WeatherWise.ai from a routed-specialist pattern to a true Plan-and-Execute multi-agent system. Includes all iterations, concerns, reviews, and the final design.
@@ -464,6 +466,6 @@ The system is deployed on GCP Cloud Run with Terraform-managed infrastructure:
 - **Vector DB:** Pinecone serverless (free tier, AWS us-east-1, cosine metric, 1536 dims) — migrated from ChromaDB. Parent content stored in vector metadata (eliminates docstore dependency at runtime).
 - **Secrets:** GCP Secret Manager (6 API keys), accessed via IAM by Cloud Run service account
 - **DNS:** Cloudflare (proxied CNAME to Cloud Run URL, Full strict SSL)
-- **CI/CD:** Cloud Build for Docker image builds (~2.5 min, ~$0.003/build)
+- **CI/CD:** Cloud Build trigger `deploy-on-push-to-main` — auto-builds and deploys on push to main (~2.5 min, ~$0.003/build)
 
 See [deployment-plan.md](deployment-plan.md) for full infrastructure details, costs, and Terraform configuration.

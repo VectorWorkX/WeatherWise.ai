@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import ast
+import collections
+import datetime
 import json
 import math
 import operator
 import re
-import signal
 import statistics
+import threading
 
 from langchain_core.tools import tool
 
@@ -163,17 +165,40 @@ def _validate_code(code: str) -> str | None:
 
 
 def _exec_with_timeout(code: str, globals_dict: dict, locals_dict: dict) -> None:
-    """Execute code with a timeout to prevent infinite loops."""
-    def _timeout_handler(signum, frame):
+    """Execute code with a per-call timeout to prevent infinite loops.
+
+    Uses a daemon thread instead of signal.alarm. Each call gets its own
+    independent timeout — safe for concurrent execution. signal.alarm is
+    process-global and causes race conditions when two calculators run in
+    parallel (the second alarm overwrites the first, and the first's
+    alarm(0) cancels the second's timeout protection).
+
+    The exec thread is a daemon thread, so it won't prevent process exit
+    if it hangs. On timeout, the thread is abandoned (Python cannot forcibly
+    kill threads), but since the sandbox restricts available operations,
+    a timed-out computation cannot cause harm beyond wasting CPU until
+    the next GC or process recycle.
+    """
+    exception_holder: list[BaseException] = []
+
+    def _run():
+        try:
+            exec(code, globals_dict, locals_dict)  # noqa: S102
+        except BaseException as e:
+            exception_holder.append(e)
+
+    thread = threading.Thread(target=_run, daemon=True)
+    thread.start()
+    thread.join(timeout=_EXEC_TIMEOUT)
+
+    if thread.is_alive():
+        # Thread is still running (timed out). It's a daemon thread,
+        # so it will be killed when the process exits. We cannot force-stop
+        # it, but the sandbox prevents any dangerous operations.
         raise TimeoutError("Code execution timed out")
 
-    old_handler = signal.signal(signal.SIGALRM, _timeout_handler)
-    signal.alarm(_EXEC_TIMEOUT)
-    try:
-        exec(code, globals_dict, locals_dict)  # noqa: S102
-    finally:
-        signal.alarm(0)
-        signal.signal(signal.SIGALRM, old_handler)
+    if exception_holder:
+        raise exception_holder[0]
 
 
 @tool
@@ -187,13 +212,13 @@ def run_calculation(code: str, data: str = "") -> str:
     - Multi-step calculations that are easier to express as code
     - Any math beyond simple arithmetic
 
-    The code runs in a restricted environment with only `math` and `statistics`
-    modules available. You MUST assign your final answer to a variable called
-    `result`. The `data` parameter is available as the variable `data` in your code.
+    The code runs in a restricted environment. You MUST assign your final
+    answer to a variable called `result`. The `data` parameter is available
+    as the variable `data` in your code.
 
     Args:
         code: Python code snippet. Must assign the final answer to `result`.
-              Available modules: math, statistics.
+              Available modules: math, statistics, json, re, datetime, collections.
               Available builtins: abs, round, min, max, sum, len, sorted,
               enumerate, zip, range, list, dict, set, tuple, float, int, str, bool.
         data: Optional data string to process (available as `data` variable in code).
@@ -232,12 +257,22 @@ def run_calculation(code: str, data: str = "") -> str:
         return f"Code validation error: {validation_error}"
 
     # Build restricted execution environment
+    # Modules are available both as modules (datetime.datetime) and as direct
+    # names (defaultdict, timedelta) because LLMs write "from X import Y"
+    # which gets stripped by _strip_imports — the direct names ensure the
+    # code still works after stripping.
     restricted_globals = {
         "__builtins__": _SAFE_BUILTINS,
         "math": math,
         "statistics": statistics,
         "re": re,
         "json": json,
+        "datetime": datetime,
+        "timedelta": datetime.timedelta,
+        "collections": collections,
+        "defaultdict": collections.defaultdict,
+        "Counter": collections.Counter,
+        "OrderedDict": collections.OrderedDict,
         "data": data,
     }
     local_vars: dict = {}
@@ -246,6 +281,12 @@ def run_calculation(code: str, data: str = "") -> str:
         _exec_with_timeout(code, restricted_globals, local_vars)
     except TimeoutError:
         return f"Code execution timed out after {_EXEC_TIMEOUT} seconds"
+    except NameError as e:
+        return (
+            f"Code execution error: {e}. "
+            f"Each run_calculation call is isolated — variables and functions "
+            f"from previous calls do not persist. Write ALL logic in a single call."
+        )
     except Exception as e:
         return f"Code execution error: {type(e).__name__}: {e}"
 
@@ -254,4 +295,11 @@ def run_calculation(code: str, data: str = "") -> str:
 
     result = local_vars["result"]
     logger.info("run_calculation_success", result_type=type(result).__name__)
+    # Return JSON for dict/list so downstream calculators can parse with json.loads()
+    # instead of failing on Python repr strings (single quotes, True vs true)
+    if isinstance(result, (dict, list)):
+        try:
+            return json.dumps(result)
+        except (TypeError, ValueError):
+            return str(result)
     return str(result)

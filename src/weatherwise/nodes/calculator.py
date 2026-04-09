@@ -35,10 +35,13 @@ CRITICAL RULES:
 ALWAYS parse it with `json.loads()`. NEVER copy or hardcode values from the conversation \
 into your code — you WILL make errors. Parse everything from the `data` variable.
 - Your code MUST assign the final answer to a variable called `result`.
-- Available in the sandbox: `json`, `math`, `statistics`, `re` modules and standard builtins.
+- Available in the sandbox: `json`, `math`, `statistics`, `re`, `datetime`, `collections` modules and standard builtins.
 - The `data` variable is a JSON string. Use `json.loads(data)` to get a dict keyed by location \
 (e.g., `all_data["phoenix_0"]`). Each value is the structured API response for that location.
-- For simple arithmetic with 2-3 known numbers, use compute_expression instead (faster)."""
+- For simple arithmetic with 2-3 known numbers, use compute_expression instead (faster).
+- If prior calculation results are provided, they are JSON strings — parse them with `json.loads()`.
+- Write your entire analysis in a SINGLE run_calculation call. Do not split multi-step logic \
+across multiple tool calls — variables and functions from one call are not available in the next."""
 
 _calc_tools = [compute_expression, run_calculation]
 _calc_tool_map = {t.name: t for t in _calc_tools}
@@ -50,7 +53,7 @@ def _get_calc_llm() -> ChatAnthropic:
     global _calc_llm
     if _calc_llm is None:
         _calc_llm = ChatAnthropic(
-            model="claude-haiku-4-5-20251001",
+            model="claude-sonnet-4-20250514",
             api_key=os.environ.get("ANTHROPIC_API_KEY"),
             max_tokens=8000,
             temperature=0,
@@ -88,6 +91,19 @@ async def calculator_agent(state: CalcPayload) -> dict[str, Any]:
             except (json.JSONDecodeError, ValueError):
                 data_dict[loc] = raw
         data_summary = json.dumps(data_dict)
+
+        # Skip LLM call if fetcher data was received but it's all error strings
+        # (no structured dicts). This matches the visualizer's guard at
+        # visualizer.py:196 and prevents wasting LLM tokens on garbage input.
+        # Only trigger when data_dict is non-empty (data was expected but failed) —
+        # empty data_dict means the task may be pure arithmetic with no dependencies.
+        if data_dict and not prior_calculations:
+            has_structured = any(isinstance(v, dict) for v in data_dict.values())
+            if not has_structured:
+                logger.warning("calculator_skipped_no_data", plan_index=plan_index,
+                               data_types=[type(v).__name__ for v in data_dict.values()])
+                result = f"Calculation skipped for '{query}': no structured weather data available from dependencies"
+                return {"calculations": [result], "completed_indices": [plan_index]}
 
         # Include prior calculation results if this task depends on earlier calcs
         prior_context = ""

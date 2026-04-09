@@ -6,12 +6,12 @@ WeatherWise.ai is a stateful multi-agent weather system using a Planner-Executor
 
 ## Tech Stack
 - **Orchestration:** LangGraph v0.2+ (StateGraph with Send-based fan-out)
-- **LLM:** Anthropic Claude (via `langchain-anthropic`). Sonnet for fetcher, planner, synthesizer, visualizer. Haiku for supervisor, calculator.
+- **LLM:** Anthropic Claude (via `langchain-anthropic`). Sonnet for all agents (supervisor, fetcher, planner, calculator, synthesizer, visualizer).
 - **Weather Data:** Xweather MCP Server via `langchain-mcp-adapters`, Bearer auth header, tool filtering (`exclude_tags=tropical,lightning`)
 - **RAG:** Pinecone (serverless, free tier) + OpenAI `text-embedding-3-small` (1536 dims), summary-to-source multi-vector retrieval, parent content in vector metadata
 - **Document Parsing:** `unstructured` (`hi_res` strategy) for PDF text, tables, images — ingestion only
 - **Tools:** Xweather MCP tools (real-time), Pinecone RAG retrieval, sandboxed Python calculator (math + statistics), ECharts visualization (LLM generates complete ECharts JSON directly)
-- **Checkpointing:** MemorySaver (production + dev), AsyncSqliteSaver (local persistent). Redis planned via Redis Cloud free tier (GCP Memorystore lacks RediSearch module needed by langgraph-checkpoint-redis v0.3+)
+- **Checkpointing:** MemorySaver (default), AsyncSqliteSaver (local persistent), AsyncRedisSaver (implemented, toggleable via `CHECKPOINTER_MODE` env var). Redis not active in production deployment — GCP Memorystore lacks RediSearch module needed by langgraph-checkpoint-redis v0.3+.
 - **Prompt Caching:** Anthropic native prompt caching via `cache_control` content blocks (GA, no beta header)
 - **Validation:** Pydantic models for structured output
 - **Environment:** Python 3.11+, uv for dependency management
@@ -33,12 +33,14 @@ WeatherWise.ai is a stateful multi-agent weather system using a Planner-Executor
 ## Key Files
 - `src/weatherwise/state.py` — State definition with reducers
 - `src/weatherwise/graph.py` — StateGraph builder and wiring
-- `src/weatherwise/nodes/` — Node implementations (supervisor, planner, executor, fetcher, retriever, calculator, synthesizer)
+- `src/weatherwise/nodes/` — Node implementations (supervisor, planner, executor, fetcher, retriever, calculator, visualizer, synthesizer)
 - `src/weatherwise/tools/xweather_mcp.py` — Xweather MCP client config
 - `src/weatherwise/tools/vector_search.py` — Pinecone retrieval (runtime, lightweight)
 - `src/weatherwise/tools/math_ops.py` — Calculator tools: `compute_expression` (arithmetic) + `run_calculation` (sandboxed Python with math/statistics)
 - `src/weatherwise/nodes/visualizer.py` — Visualizer agent: generates complete ECharts option JSON directly (generative approach, no templates)
-- `src/weatherwise/main.py` — Entry point with checkpointing
+- `src/weatherwise/server.py` — FastAPI + WebSocket server (REST, streaming, session management)
+- `src/weatherwise/utils.py` — Shared utilities (chat history trimming)
+- `src/weatherwise/main.py` — CLI entry point with checkpointing
 - `scripts/build_knowledge.py` — Offline RAG ingestion pipeline (PDF/image -> Pinecone)
 - `scripts/verify_retrieval.py` — RAG retrieval test harness
 

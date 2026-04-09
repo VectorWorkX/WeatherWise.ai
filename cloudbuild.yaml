@@ -3,6 +3,7 @@ steps:
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'build'
+      - '--no-cache'
       - '-t'
       - 'us-central1-docker.pkg.dev/$PROJECT_ID/weatherwise/app:$COMMIT_SHA'
       - '-t'
@@ -33,6 +34,8 @@ steps:
       - 'us-central1'
       - '--platform'
       - 'managed'
+      - '--update-env-vars'
+      - 'SERVE_FRONTEND=1,FRONTEND_DIST_DIR=/app/frontend/dist,ENVIRONMENT=production,CHECKPOINTER_MODE=memory,LOG_FORMAT=json,LANGCHAIN_TRACING_V2=true,LANGCHAIN_PROJECT=weatherwise-ai,PINECONE_INDEX_NAME=weatherwise-knowledge,XWEATHER_MCP_URL=https://mcp.api.xweather.com/mcp'
 
 options:
   logging: CLOUD_LOGGING_ONLY

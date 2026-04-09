@@ -78,32 +78,12 @@ export default function WeatherReport({ report }: Props) {
         </div>
       )}
 
-      {/* Chart Sections */}
+      {/* Chart Sections — stacked vertically, each with its own narrative */}
       {report.sections && report.sections.length > 0 && (
-        <div className="px-5 pb-4">
-          {/* Group by priority: priority 1 = full width, priority 2 = side by side */}
-          {(() => {
-            const fullWidth = report.sections!.filter((s) => s.priority === 1);
-            const halfWidth = report.sections!.filter((s) => s.priority !== 1);
-
-            return (
-              <>
-                {/* Full-width charts */}
-                {fullWidth.map((section, i) => (
-                  <ChartSection key={`full-${i}`} section={section} />
-                ))}
-
-                {/* Side-by-side charts */}
-                {halfWidth.length > 0 && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {halfWidth.map((section, i) => (
-                      <ChartSection key={`half-${i}`} section={section} />
-                    ))}
-                  </div>
-                )}
-              </>
-            );
-          })()}
+        <div className="px-5 pb-4 space-y-4">
+          {report.sections.map((section, i) => (
+            <ChartSection key={i} section={section} />
+          ))}
         </div>
       )}
 
@@ -130,10 +110,58 @@ export default function WeatherReport({ report }: Props) {
   );
 }
 
+/** Sanitize an ECharts option so labels, titles, and legends never clip or overlap. */
+function sanitizeOption(raw: Record<string, unknown>): Record<string, unknown> {
+  const option = { ...raw };
+
+  // --- grid: enforce containLabel and reserve space for title/legend ---
+  // grid can be a single object OR an array (dual-axis charts use [{}, {}])
+  const hasTitle = Boolean(option.title);
+  const hasLegend = Boolean(option.legend);
+  // Minimum top margin so grid doesn't overlap title + legend
+  const minTop = hasTitle && hasLegend ? 70 : hasTitle || hasLegend ? 50 : 30;
+
+  const fixGrid = (g: Record<string, unknown>): Record<string, unknown> => {
+    const fixed: Record<string, unknown> = { ...g, containLabel: true };
+    // Reserve space above for title + legend
+    const curTop = typeof fixed.top === "number" ? fixed.top : undefined;
+    if (curTop === undefined || curTop < minTop) {
+      fixed.top = minTop;
+    }
+    // Reserve space on right for markLine labels / annotations that extend past the axis
+    const curRight = typeof fixed.right === "number" ? fixed.right : undefined;
+    if (curRight === undefined || curRight < 30) {
+      fixed.right = 30;
+    }
+    return fixed;
+  };
+
+  if (Array.isArray(option.grid)) {
+    option.grid = (option.grid as Record<string, unknown>[]).map(fixGrid);
+  } else {
+    const gridObj =
+      typeof option.grid === "object" && option.grid !== null
+        ? (option.grid as Record<string, unknown>)
+        : {};
+    option.grid = fixGrid(gridObj);
+  }
+
+  // --- pie/radar charts: shrink radius to leave room for labels ---
+  if (Array.isArray(option.series)) {
+    option.series = (option.series as Record<string, unknown>[]).map((s) => {
+      if (s.type === "pie" && !s.radius) {
+        return { ...s, radius: ["30%", "60%"], center: ["50%", "55%"] };
+      }
+      return s;
+    });
+  }
+
+  return option;
+}
+
 function ChartSection({ section }: { section: NonNullable<VisualReportData["sections"]>[number] }) {
   const raw = section.echarts_option as Record<string, unknown>;
-  const rawGrid = typeof raw.grid === "object" && raw.grid !== null ? raw.grid as Record<string, unknown> : {};
-  const option = { ...raw, grid: { containLabel: true, ...rawGrid } };
+  const option = sanitizeOption(raw);
 
   return (
     <div className="mb-4">
@@ -143,7 +171,7 @@ function ChartSection({ section }: { section: NonNullable<VisualReportData["sect
       {section.narrative && (
         <p className="text-xs text-neutral-500 mb-3">{section.narrative}</p>
       )}
-      <div className="rounded-xl bg-white/[0.02] border border-white/[0.06] p-4 overflow-visible">
+      <div className="rounded-xl bg-white/[0.02] border border-white/[0.06] p-4 overflow-hidden">
         <ChartErrorBoundary>
           <Suspense fallback={<div className="h-[400px] flex items-center justify-center text-neutral-500 text-sm">Loading chart...</div>}>
             <ReactECharts

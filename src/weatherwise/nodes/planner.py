@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 from weatherwise.logging import get_logger
 from weatherwise.retry import llm_retry
 from weatherwise.state import WeatherState
+from weatherwise.utils import trim_chat_history
 
 logger = get_logger(__name__)
 
@@ -35,8 +36,16 @@ Each task has these fields:
 Rules:
 - "fetch" = get weather-related data for a location. The "query" field tells the fetcher WHAT to look for (forecast, historical data, air quality, alerts, hourly conditions, raster maps, etc.). The fetcher has many tools and will pick the right one based on your query. When the user asks for a map, the fetcher handles it via the raster maps tool — do NOT create a separate "visualize" task for map requests, as the map itself is the visualization.
 - "research" = search the knowledge base for background info (port closures, historical events, climate science, etc.)
-- "calculate" = perform a math operation (anomalies, comparisons, unit conversions, statistics, etc.)
-- "visualize" = generate a visual chart or graph. Only include when the user explicitly asks to see, plot, graph, chart, or visualize something. Always pair with fetch tasks via depends_on.
+- "calculate" = perform a math operation (anomalies, comparisons, unit conversions, statistics, etc.). \
+When a query involves a multi-step analysis on the same dataset (compute X, then use X to find Y, \
+then cross-reference), create ONE calculate task — the calculator can handle multi-step logic in a \
+single code block. Only split into separate calculate tasks when each step uses DIFFERENT data sources.
+- "visualize" = generate a visual chart or graph. Only include when the user explicitly asks to see, plot, graph, chart, or visualize something. Always pair with fetch tasks via depends_on. \
+Think about what data the visualizer needs to build an insightful chart — not just the single \
+number the user asked about. For example, if the user asks to "visualize the average temperature \
+in Chicago", fetching just the mean is a single bar with one number — not a useful chart. Instead, \
+fetch the daily or hourly breakdown so the visualizer can show the trend WITH the mean, which \
+tells a real story. Always fetch the underlying data that supports the insight.
 - Use "depends_on" to express which tasks must finish first. The executor uses this to determine parallel execution waves automatically — tasks with satisfied dependencies run in parallel.
 - A "calculate" task that needs fetched data should list the relevant fetch task indices in "depends_on".
 - A "calculate" task that needs results from another calculation should list that calculation's index in "depends_on". It will receive those prior results.
@@ -59,7 +68,7 @@ Query: "Add the temperatures of Boston and New York and convert to Kelvin"
 Tasks: [{{"op": "fetch", "location": "Boston", "query": "", "depends_on": []}}, {{"op": "fetch", "location": "New York", "query": "", "depends_on": []}}, {{"op": "calculate", "query": "add temperatures of Boston and New York, convert sum to Kelvin", "location": "", "depends_on": [0, 1]}}]
 
 Query: "Compare temperature deviation from mean for Delhi vs San Jose over the last month"
-Tasks: [{{"op": "fetch", "location": "Delhi", "query": "daily weather summary from {thirty_days_ago} to {today_date} with temperature data", "depends_on": []}}, {{"op": "fetch", "location": "San Jose", "query": "daily weather summary from {thirty_days_ago} to {today_date} with temperature data", "depends_on": []}}, {{"op": "calculate", "location": "Delhi", "query": "calculate mean temperature and standard deviation for Delhi", "depends_on": [0]}}, {{"op": "calculate", "location": "San Jose", "query": "calculate mean temperature and standard deviation for San Jose", "depends_on": [1]}}, {{"op": "calculate", "location": "", "query": "compare temperature deviations: which city (Delhi or San Jose) has greater deviation from its mean", "depends_on": [2, 3]}}]
+Tasks: [{{"op": "fetch", "location": "Delhi", "query": "daily weather summary from {thirty_days_ago} to {today_date} with temperature data", "depends_on": []}}, {{"op": "fetch", "location": "San Jose", "query": "daily weather summary from {thirty_days_ago} to {today_date} with temperature data", "depends_on": []}}, {{"op": "calculate", "location": "", "query": "calculate mean temperature and standard deviation for both Delhi and San Jose, then compare which city has greater deviation from its mean", "depends_on": [0, 1]}}]
 
 Query: "Generate a visual report of lightning strikes across the 5 largest Minneapolis suburbs"
 Tasks: [{{"op": "fetch", "location": "Brooklyn Park", "query": "historical lightning strikes for the past month", "depends_on": []}}, {{"op": "fetch", "location": "Plymouth", "query": "historical lightning strikes for the past month", "depends_on": []}}, {{"op": "fetch", "location": "Maple Grove", "query": "historical lightning strikes for the past month", "depends_on": []}}, {{"op": "fetch", "location": "Woodbury", "query": "historical lightning strikes for the past month", "depends_on": []}}, {{"op": "fetch", "location": "Blaine", "query": "historical lightning strikes for the past month", "depends_on": []}}, {{"op": "visualize", "location": "", "query": "visual report of cloud-to-ground lightning strike counts across 5 Minneapolis suburbs with comparison charts and insights", "depends_on": [0, 1, 2, 3, 4]}}]
@@ -138,7 +147,7 @@ async def planner(state: WeatherState) -> dict[str, Any]:
                 [SystemMessage(content=[
                     {"type": "text", "text": resolved_prompt,
                      "cache_control": {"type": "ephemeral"}},
-                ])] + list(state["messages"][-12:])
+                ])] + trim_chat_history(state["messages"])
             )
 
         result = await _plan()
