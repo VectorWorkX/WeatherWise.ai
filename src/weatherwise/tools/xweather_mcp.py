@@ -71,6 +71,9 @@ async def get_xweather_tools() -> list:
         last_err: Exception | None = None
         for attempt in range(3):
             try:
+                # MultiServerMCPClient is a lightweight config holder — each
+                # tool invocation creates a short-lived MCP session internally.
+                # No persistent connections are held by the client object.
                 client = MultiServerMCPClient(config)
                 _tool_cache = await client.get_tools()
                 _tool_cache_time = time.monotonic()
