@@ -92,6 +92,19 @@ async def calculator_agent(state: CalcPayload) -> dict[str, Any]:
                 data_dict[loc] = raw
         data_summary = json.dumps(data_dict)
 
+        # Skip LLM call if fetcher data was received but it's all error strings
+        # (no structured dicts). This matches the visualizer's guard at
+        # visualizer.py:196 and prevents wasting LLM tokens on garbage input.
+        # Only trigger when data_dict is non-empty (data was expected but failed) —
+        # empty data_dict means the task may be pure arithmetic with no dependencies.
+        if data_dict and not prior_calculations:
+            has_structured = any(isinstance(v, dict) for v in data_dict.values())
+            if not has_structured:
+                logger.warning("calculator_skipped_no_data", plan_index=plan_index,
+                               data_types=[type(v).__name__ for v in data_dict.values()])
+                result = f"Calculation skipped for '{query}': no structured weather data available from dependencies"
+                return {"calculations": [result], "completed_indices": [plan_index]}
+
         # Include prior calculation results if this task depends on earlier calcs
         prior_context = ""
         if prior_calculations:

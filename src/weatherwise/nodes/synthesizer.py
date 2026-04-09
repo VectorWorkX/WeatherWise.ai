@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import os
+from datetime import datetime
 from typing import Any
 
 from langchain_anthropic import ChatAnthropic
@@ -87,7 +89,7 @@ async def synthesizer(state: WeatherState) -> dict[str, Any]:
                 raw_data = entry.get("raw_data", "")
                 if isinstance(raw_data, str) and "map_url" in raw_data:
                     try:
-                        parsed = __import__("json").loads(raw_data)
+                        parsed = json.loads(raw_data)
                         if isinstance(parsed, dict) and "map_url" in parsed:
                             map_urls.append(parsed["map_url"])
                     except (ValueError, TypeError):
@@ -127,7 +129,6 @@ async def synthesizer(state: WeatherState) -> dict[str, Any]:
             break
 
     # Date context so synthesizer never hallucinates about past/future dates
-    from datetime import datetime
     today_str = datetime.now().strftime("%A, %B %d, %Y")
 
     try:

@@ -73,7 +73,6 @@ def _extract_text(content: Any) -> str:
     return str(content)
 
 
-@llm_retry(max_attempts=3)
 async def _invoke_fetch_loop(tools: list, prompt: str) -> tuple[str, str]:
     """Manual tool-calling loop — LLM selects tools and decides when to stop.
 
@@ -82,7 +81,8 @@ async def _invoke_fetch_loop(tools: list, prompt: str) -> tuple[str, str]:
     - raw_tool_data: clean MCP tool response, typically structured JSON (for calculator/visualizer)
 
     Max 3 iterations (tool selection + up to 2 follow-ups for error recovery
-    or supplementary data).
+    or supplementary data). Retry logic is applied per-LLM-call (not per-loop)
+    to avoid wasting LLM API calls when only the tool layer fails.
     """
     llm = _get_fetcher_llm()
     today = datetime.now().strftime("%Y-%m-%d")
@@ -101,9 +101,13 @@ async def _invoke_fetch_loop(tools: list, prompt: str) -> tuple[str, str]:
 
     last_tool_data = ""
 
+    @llm_retry(max_attempts=3)
+    async def _call_llm():
+        return await llm_with_tools.ainvoke(messages)
+
     max_iterations = 3
     for iteration in range(max_iterations):
-        response = await llm_with_tools.ainvoke(messages)
+        response = await _call_llm()
         messages.append(response)
 
         if not response.tool_calls:
