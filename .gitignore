@@ -35,3 +35,6 @@ infra/.terraform/
 infra/*.tfstate*
 infra/*.tfvars
 infra/terraform-key.json
+
+# Local assistant settings
+.claude/
