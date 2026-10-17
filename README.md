@@ -4,7 +4,7 @@ A weather analyst you can talk to. It plans each question, pulls live data from 
 
 https://github.com/user-attachments/assets/8d0edeee-3438-42ed-931a-97b1560b84af
 
-Live at [weather-wise.ai](https://weather-wise.ai) · [Watch the full-resolution demo](https://github.com/user-attachments/assets/8d0edeee-3438-42ed-931a-97b1560b84af) (1080p, 36 s)
+[Watch the full-resolution demo](https://github.com/user-attachments/assets/8d0edeee-3438-42ed-931a-97b1560b84af) (1080p, 36 s)
 
 ## How it works
 
